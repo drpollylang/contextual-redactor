@@ -1,4 +1,5 @@
 import os
+import time
 from dotenv import load_dotenv
 from azure_client import AzureAIClient
 from utils import create_detailed_suggestions
@@ -44,14 +45,20 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
     
     # Parse user instructions 
     print("Step 1: Parsing user instructions...")
+    start = time.perf_counter()
     parsed_instructions = azure_client.parse_user_instructions(user_context)
+    time_elapsed_parse_instructions = time.perf_counter() - start
     pii_exceptions = [exc.lower() for exc in parsed_instructions.get("exceptions", [])]
     sensitive_content_rules = parsed_instructions.get("sensitive_content_rules")
     print(f"Found {len(pii_exceptions)} PII exceptions and a sensitive content rule: {'Yes' if sensitive_content_rules else 'No'}")
+    # print(f"Time taken to parse instructions: {time_elapsed:.3f} seconds\n")
 
     # Analyse and merge 
     print("Step 2: Analysing document layout...")
+    start = time.perf_counter()
     analysis_result = azure_client.analyse_document(input_pdf_path)
+    time_elapsed_doc_analysis = time.perf_counter() - start
+    # print(f"Time taken to analyse document layout: {time_elapsed:.3f} seconds\n")
     if not analysis_result.paragraphs: return []
     print("Step 3: Merging small paragraphs...")
     paragraphs = merge_small_paragraphs(analysis_result.paragraphs)
@@ -62,6 +69,7 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
     # Keywords to identify a DateTime as a DateOfBirth
     DOB_KEYWORDS = ["dob", "d.o.b", "date of birth", "born"]
 
+    start = time.perf_counter()
     for i, target_paragraph in enumerate(paragraphs):
         
         # Get all potential PII entities
@@ -84,6 +92,7 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
                 elif entity['category'] == 'Organization':
                     context_sentence = target_paragraph.content[max(0, entity['offset']-100):entity['offset']+entity['length']+100]
                     if azure_client.is_school(entity['text'], context_sentence):
+                        # print(f"  - Identified School: '{entity['text']}' in chunk {i+1}")
                         is_sensitive = True
                         final_category = 'School'
                 elif entity['category'] == 'Age':
@@ -95,10 +104,12 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
 
                 if is_sensitive:
                     entity['final_category'] = final_category # Add the validated category to the dict
+                    #if final_category == 'School':
+                    #    print(f"  - Validated entity: '{entity['text']}' as {final_category}")
                     validated_entities.append(entity)
 
             if validated_entities:
-                
+                # print(f"Validated entities in chunk {i+1}: {[ent['text'] + ' (' + ent['final_category'] + ')' for ent in validated_entities]}")
                 # Entity linking logic
                 validated_categories = {ent['category'] for ent in validated_entities}
                 has_person = "Person" in validated_categories
@@ -132,7 +143,11 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
                             'source_paragraph': target_paragraph
                         })
 
+    time_elapsed_extract_pii_entity_linking = time.perf_counter() - start
+    # print(f"Time taken to get potential PII entities (NER), entity linking, is_school and exceptions: {time_elapsed:.3f} seconds\n")
+
     # Nuanced LLM analysis for sensitive content
+    start = time.perf_counter()
     if sensitive_content_rules:
         print("\nTask B: Processing sensitive content page-by-page...")
         for page in analysis_result.pages:
@@ -151,12 +166,19 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
                         'source_page': page
                     })
 
+    time_elapsed_sensitive_content = time.perf_counter() - start
+    # print(f"Time taken for LLM analysis for sensitive content: {time_elapsed:.3f} seconds\n")
+
     if not all_findings_with_source: return []
     print(f"Found a total of {len(all_findings_with_source)} potential redactions.")
 
     # Map all combined findings to coordinates.
     print("Step 5: Creating detailed suggestions...")
     detailed_suggestions = create_detailed_suggestions(analysis_result, all_findings_with_source)
+    time_elapsed_suggestions = time.perf_counter() - start
+    # print(f"Time taken to create detailed suggestions: {time_elapsed:.3f} seconds\n")
+
+    print(f"Time elapsed by model call:\n1. Parse Instructions: {time_elapsed_parse_instructions:.3f} seconds\n2. Document Analysis: {time_elapsed_doc_analysis:.3f} seconds\n3. PII Extraction & Entity Linking: {time_elapsed_extract_pii_entity_linking:.3f} seconds\n4. Sensitive Content Analysis: {time_elapsed_sensitive_content:.3f} seconds\n5. Suggestions Mapping: {time_elapsed_suggestions:.3f} seconds\n")
     
     return detailed_suggestions
 

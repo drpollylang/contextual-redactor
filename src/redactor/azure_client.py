@@ -17,6 +17,8 @@ class AzureAIClient:
             openai_key = os.environ["AZURE_OPENAI_KEY"]
             self.openai_deployment = os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"]
             self.openai_fast_deployment = os.environ["AZURE_OPENAI_GPT35_DEPLOYMENT_NAME"]
+            self.openai_gpt5_deployment = os.environ["AZURE_OPENAI_GPT5_DEPLOYMENT_NAME"]
+            self.openai_gpt5_nano_deployment = os.environ["AZURE_OPENAI_GPT5NANO_DEPLOYMENT_NAME"]
             lang_endpoint = os.environ["AZURE_LANGUAGE_ENDPOINT"]
             lang_key = os.environ["AZURE_LANGUAGE_KEY"]
 
@@ -86,9 +88,12 @@ class AzureAIClient:
         "sensitive_content_rules": "Find any quotes that are critical of the parents"
         }
         """
+        # Model 1 (parse user instructions)
         try:
             response = self.openai_client.chat.completions.create(
-                model=self.openai_deployment,
+                #model=self.openai_deployment,
+                model=self.openai_fast_deployment,
+                #model=self.openai_gpt5_nano_deployment,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_text}
@@ -146,6 +151,7 @@ class AzureAIClient:
         try:
             response = self.openai_client.chat.completions.create(
                 model=self.openai_fast_deployment,
+                #model=self.openai_gpt5_deployment,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -153,6 +159,7 @@ class AzureAIClient:
                 max_tokens=1, # We only need one word
                 temperature=0.0
             )
+            # print(f"is_school check for '{organization_name}': {response.choices[0].message.content.strip()}")
             return response.choices[0].message.content.lower() == "true"
         except Exception as e:
             print(f"Error in is_school check: {e}")
@@ -189,9 +196,12 @@ class AzureAIClient:
             entity_list_str = ", ".join([f'"{ent["text"]}"' for ent in pii_entities])
             user_prompt = f"Text: \"{text_chunk}\"\nPII Entities: [{entity_list_str}]"
             
+            # Model 2 (entity linking)
             try:
                 response = self.openai_client.chat.completions.create(
-                    model=self.openai_deployment,
+                    #model=self.openai_deployment,
+                    model=self.openai_fast_deployment,
+                    #model=self.openai_gpt5_nano_deployment,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
@@ -226,10 +236,12 @@ class AzureAIClient:
         Respond ONLY with a valid JSON object with a single key "redactions", which is an array of objects.
         Each object must have "text", "category", and "reasoning". If nothing is found, return an empty "redactions" array.
         """
-        
+        # Model 3 (sensitive content analysis)
         try:
             response = self.openai_client.chat.completions.create(
                 model=self.openai_deployment,
+                #model=self.openai_fast_deployment,
+                #model=self.openai_gpt5_nano_deployment,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text_chunk}

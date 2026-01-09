@@ -40,6 +40,8 @@ def main():
         st.session_state.active_page_index = 0
     if 'last_promoted_ids' not in st.session_state:
         st.session_state.last_promoted_ids = []
+    if 'time_elapsed' not in st.session_state:
+        st.session_state.time_elapsed = None
 
     # --- Main App UI ---
     st.title("AI-Powered Document Redaction Tool")
@@ -95,8 +97,9 @@ def main():
                 st.warning("Analysis complete, but no sensitive information was found.")
             
     # Print time taken to analyse instructions
-    st.success(f"Completed in {st.session_state.time_elapsed:.3f} seconds")
-    # st.metric(label="Time Elapsed", value=f"{st.session_state.time_elapsed:.3f}s")
+    if st.session_state.time_elapsed is not None:
+        st.success(f"Completed in {st.session_state.time_elapsed:.3f} seconds")
+        # st.metric(label="Time Elapsed", value=f"{st.session_state.time_elapsed:.3f}s")
 
 
     if st.session_state.suggestions:
