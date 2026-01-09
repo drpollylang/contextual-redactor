@@ -1,6 +1,7 @@
 import streamlit as st
 import fitz  # PyMuPDF
 import os
+import time
 from collections import defaultdict
 from PIL import ImageDraw, Image
 from streamlit_drawable_canvas import st_canvas
@@ -75,6 +76,8 @@ def main():
             st.session_state.final_pdf_path = None
             st.session_state.manual_rects = defaultdict(list)
             st.session_state.active_page_index = 0
+            # Start timer
+            start = time.perf_counter()
             
             with st.spinner("Analysing document with your instructions..."):
                 suggestions = analyse_document_for_redactions(input_pdf_path, st.session_state.user_context)
@@ -83,10 +86,18 @@ def main():
                 st.session_state.approval_state = {s['id']: True for s in suggestions}
                 st.session_state.original_pdf_images = get_original_pdf_images(input_pdf_path)
             
+            # Stop timer
+            st.session_state.time_elapsed = time.perf_counter() - start
+            
             if suggestions:
                 st.success(f"Analysis complete! Found {len(suggestions)} total instances to review.")
             else:
                 st.warning("Analysis complete, but no sensitive information was found.")
+            
+    # Print time taken to analyse instructions
+    st.success(f"Completed in {st.session_state.time_elapsed:.3f} seconds")
+    # st.metric(label="Time Elapsed", value=f"{st.session_state.time_elapsed:.3f}s")
+
 
     if st.session_state.suggestions:
         st.header("Review and Refine Redactions")
