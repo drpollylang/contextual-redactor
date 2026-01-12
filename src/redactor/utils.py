@@ -7,6 +7,9 @@ import fitz
 import os
 from PIL import Image
 from io import BytesIO
+import csv
+from datetime import datetime
+from pathlib import Path
 
 # --- Logger Setup ---
 def get_logger():
@@ -195,3 +198,45 @@ def get_original_pdf_images(pdf_path):
         logger.error(f"Error opening or rendering PDF: {e}")
         return []
 
+
+
+# --- Logger that saves output of NER calls (for testing/evaluating) ---
+
+def log_ner_output(base_filename, *values, header=None, sep=","):
+    """
+    Creates a new log file with a timestamp in its name on the first call,
+    then appends rows to that file on subsequent calls.
+
+    Args:
+        base_filename (str): Base name for the log file (e.g., 'training_log').
+        *values: Values to log as a single row.
+        header (list[str] | None): Optional header written only on the first call.
+        sep (str): Delimiter for the CSV file. Defaults to ",".
+
+    Example:
+        for i in range(3):
+            loss = 0.1 * i
+            acc = 0.8 + 0.05 * i
+            log_ner_output("training_log", i, loss, acc, header=["epoch", "loss", "acc"])
+    """
+    # Initialize state tracking
+    if not hasattr(log_ner_output, "_log_file"):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_ner_output._log_file = Path(f"logs/{base_filename}_{timestamp}.csv")
+        log_ner_output._initialized = False
+
+    # Choose mode: overwrite on first call, append otherwise
+    mode = "w" if not log_ner_output._initialized else "a"
+
+    with log_ner_output._log_file.open(mode, newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=sep)
+
+        # Write header only once, if provided
+        if not log_ner_output._initialized and header:
+            writer.writerow(header)
+
+        # Write the row
+        writer.writerow(values)
+
+    # Mark as initialized
+    log_ner_output._initialized = True

@@ -2,10 +2,12 @@ import os
 import json
 from typing import List, Dict
 
+from redactor.utils import log_ner_output
+
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeResult
-from azure.ai.textanalytics import TextAnalyticsClient, PiiEntityCategory
+from azure.ai.textanalytics import TextAnalyticsClient, PiiEntityCategory, ConfidenceScoreThresholdOverride
 from openai import AzureOpenAI
 
 class AzureAIClient:
@@ -17,6 +19,7 @@ class AzureAIClient:
             openai_key = os.environ["AZURE_OPENAI_KEY"]
             self.openai_deployment = os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"]
             self.openai_fast_deployment = os.environ["AZURE_OPENAI_GPT35_DEPLOYMENT_NAME"]
+            self.openai_gpt4_mini_deployment = os.environ["AZURE_OPENAI_GPT41MINI_DEPLOYMENT_NAME"]
             self.openai_gpt5_deployment = os.environ["AZURE_OPENAI_GPT5_DEPLOYMENT_NAME"]
             self.openai_gpt5_nano_deployment = os.environ["AZURE_OPENAI_GPT5NANO_DEPLOYMENT_NAME"]
             lang_endpoint = os.environ["AZURE_LANGUAGE_ENDPOINT"]
@@ -106,33 +109,61 @@ class AzureAIClient:
             print(f"Error parsing user instructions: {e}")
             return {} # Return empty on failure
 
-    def get_pii(self, text_chunk: str) -> list:
+    def get_pii(self, text_chunk: str, enable_log=True) -> list:
         """Extracts structured PII entities using Azure Language Studio."""
         comprehensive_pii_categories = [
+                # Commented out categories are currently in preview and so cause errors when included.
+                # Not sure why this is the case; maybe this language model was deployed before these categories were available?
+                # TODO: Revisit this by deploying a more up-to-date language model.
                 PiiEntityCategory.PERSON,
                 PiiEntityCategory.PHONE_NUMBER,
                 PiiEntityCategory.EMAIL,
                 PiiEntityCategory.ADDRESS,
                 PiiEntityCategory.DATE,
                 PiiEntityCategory.AGE,
+                PiiEntityCategory.IP_ADDRESS,
                 PiiEntityCategory.UK_NATIONAL_INSURANCE_NUMBER,
                 PiiEntityCategory.UK_NATIONAL_HEALTH_NUMBER,
-                PiiEntityCategory.ORGANIZATION
+                PiiEntityCategory.USUK_PASSPORT_NUMBER,
+                PiiEntityCategory.UK_DRIVERS_LICENSE_NUMBER,
+                # PiiEntityCategory.BANK_ACCOUNT_NUMBER,
+                # PiiEntityCategory.SORT_CODE,
+                PiiEntityCategory.CREDIT_CARD_NUMBER,
+                PiiEntityCategory.UK_ELECTORAL_ROLL_NUMBER,
+                PiiEntityCategory.UK_UNIQUE_TAXPAYER_NUMBER,
+                PiiEntityCategory.ORGANIZATION,
+                # PiiEntityCategory.LICENSE_PLATE
             ]
+
+        # Create a confidence threshold override
+        # Example: Only return PERSON entities with confidence >= 0.4
+        threshold_override = ConfidenceScoreThresholdOverride(
+            category=PiiEntityCategory.PERSON,
+            threshold=0.4
+        )
 
         try:
             result = self.text_analytics_client.recognize_pii_entities(
                 [text_chunk],
-                categories_filter=comprehensive_pii_categories
+                categories_filter=comprehensive_pii_categories,
+                confidence_score_threshold_overrides=[threshold_override]
             )
             entities = [
                 {"text": ent.text, 
                  "category": ent.category,
+                 "confidence_score": ent.confidence_score,
                  "offset": ent.offset,
                  "length": ent.length                 
             }
                 for doc in result if not doc.is_error for ent in doc.entities
             ]
+            if enable_log:
+                for ent in entities:
+                    log_ner_output(
+                        "ner_log",
+                        ent['text'], ent['category'], ent['confidence_score'], ent['offset'], ent['length'],
+                        header=["text", "category", "confidence_score", "offset", "length"]
+                    )
             return entities
         except Exception as e:
             print(f"Error getting PII from Language Service: {e}")
@@ -150,7 +181,7 @@ class AzureAIClient:
         
         try:
             response = self.openai_client.chat.completions.create(
-                model=self.openai_fast_deployment,
+                model=self.openai_gpt4_mini_deployment,
                 #model=self.openai_gpt5_deployment,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -200,7 +231,7 @@ class AzureAIClient:
             try:
                 response = self.openai_client.chat.completions.create(
                     #model=self.openai_deployment,
-                    model=self.openai_fast_deployment,
+                    model=self.openai_gpt4_mini_deployment,
                     #model=self.openai_gpt5_nano_deployment,
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -240,7 +271,7 @@ class AzureAIClient:
         try:
             response = self.openai_client.chat.completions.create(
                 model=self.openai_deployment,
-                #model=self.openai_fast_deployment,
+                #model=self.openai_gpt4_mini_deployment,
                 #model=self.openai_gpt5_nano_deployment,
                 messages=[
                     {"role": "system", "content": system_prompt},
