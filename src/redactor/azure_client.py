@@ -95,8 +95,9 @@ class AzureAIClient:
         try:
             response = self.openai_client.chat.completions.create(
                 #model=self.openai_deployment,
-                model=self.openai_fast_deployment,
+                #model=self.openai_fast_deployment,
                 #model=self.openai_gpt5_nano_deployment,
+                model-self.openai_gpt4_mini_deployment,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_text}
@@ -158,6 +159,7 @@ class AzureAIClient:
                 for doc in result if not doc.is_error for ent in doc.entities
             ]
             if enable_log:
+                # print("Saving NER output to log...")
                 for ent in entities:
                     log_ner_output(
                         "ner_log",
