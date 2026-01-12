@@ -71,6 +71,8 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
 
     start = time.perf_counter()
     for i, target_paragraph in enumerate(paragraphs):
+        # if i==0:
+        #     print(target_paragraph.content)
         
         # Get all potential PII entities
         all_potential_entities = azure_client.get_pii(target_paragraph.content)

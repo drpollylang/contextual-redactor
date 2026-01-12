@@ -7,7 +7,7 @@ from redactor.utils import log_ner_output
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeResult
-from azure.ai.textanalytics import TextAnalyticsClient, PiiEntityCategory, ConfidenceScoreThresholdOverride
+from azure.ai.textanalytics import TextAnalyticsClient, PiiEntityCategory
 from openai import AzureOpenAI
 
 class AzureAIClient:
@@ -113,8 +113,7 @@ class AzureAIClient:
         """Extracts structured PII entities using Azure Language Studio."""
         comprehensive_pii_categories = [
                 # Commented out categories are currently in preview and so cause errors when included.
-                # Not sure why this is the case; maybe this language model was deployed before these categories were available?
-                # TODO: Revisit this by deploying a more up-to-date language model.
+                # Revisit this when upgrading to a newer version of the SDK (azure.ai.textanalytics >= 6.x).
                 PiiEntityCategory.PERSON,
                 PiiEntityCategory.PHONE_NUMBER,
                 PiiEntityCategory.EMAIL,
@@ -135,18 +134,19 @@ class AzureAIClient:
                 # PiiEntityCategory.LICENSE_PLATE
             ]
 
-        # Create a confidence threshold override
+        # Create a confidence threshold override 
+        # currently commented out because not supported by azure.ai.textanalytics version < 6.x (preview)
         # Example: Only return PERSON entities with confidence >= 0.4
-        threshold_override = ConfidenceScoreThresholdOverride(
-            category=PiiEntityCategory.PERSON,
-            threshold=0.4
-        )
+        # threshold_override = ConfidenceScoreThresholdOverride(
+        #     category=PiiEntityCategory.PERSON,
+        #     threshold=0.4
+        # )
 
         try:
             result = self.text_analytics_client.recognize_pii_entities(
                 [text_chunk],
                 categories_filter=comprehensive_pii_categories,
-                confidence_score_threshold_overrides=[threshold_override]
+                # confidence_score_threshold_overrides=[threshold_override]
             )
             entities = [
                 {"text": ent.text, 
