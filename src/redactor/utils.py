@@ -59,6 +59,7 @@ def merge_consecutive_word_rects(word_rects: List[fitz.Rect]) -> List[fitz.Rect]
             final_merged_rects.append(merged_run)
     return final_merged_rects
 
+
 # --- Mapping LLM Findings to Document Coordinates ---
 def create_detailed_suggestions(
     analysis: AnalyzeResult, 
@@ -245,61 +246,9 @@ def log_ner_output(base_filename, *values, header=None, sep=","):
 
 
 
-# --- Extract Emails from AnalyzeResult ---
 
-def extract_emails_alt(analyze_result):
-    # Usage:
-    # analyze_result = client.begin_analyze_document("prebuilt-layout", document).result()
-    # email_paragraphs = extract_emails_from_analyze_result(analyze_result)
-    # print(email_paragraphs)
 
-    raw_text = analyze_result.content
-
-    # Regex to find emails
-    email_pattern = re.compile(
-        r"From:\s*(?P<from>.+?)\s*To:\s*(?P<to>.+?)\s*Subject:\s*(?P<subject>.+?)\s*Date:\s*(?P<date>.+?)\s*(?P<body>(?:.|\n)*?)(?=From:|$)",
-        re.MULTILINE
-    )
-
-    email_paragraphs = []
-
-    for match in email_pattern.finditer(raw_text):
-        start_offset = match.start()
-        end_offset = match.end()
-        email_text = raw_text[start_offset:end_offset]
-
-        # Collect bounding regions across pages
-        merged_points = []
-        for page in analyze_result.pages:
-            for region in page.get("boundingRegions", []):
-                span_offset = region["span"]["offset"]
-                if start_offset <= span_offset < end_offset:
-                    merged_points.extend(region["polygon"])
-
-        # Merge bounding box if points exist
-        merged_region = None
-        if merged_points:
-            xs = [p["x"] for p in merged_points]
-            ys = [p["y"] for p in merged_points]
-            merged_polygon = [
-                {"x": min(xs), "y": min(ys)},
-                {"x": max(xs), "y": min(ys)},
-                {"x": max(xs), "y": max(ys)},
-                {"x": min(xs), "y": max(ys)}
-            ]
-            merged_region = {"pageNumber": None, "polygon": merged_polygon}
-
-        # Build custom paragraph-like object
-        paragraph = {
-            "content": email_text,
-            "role": "email",
-            "span": {"offset": start_offset, "length": end_offset - start_offset},
-            "bounding_region": merged_region
-        }
-        email_paragraphs.append(paragraph)
-
-    return email_paragraphs
-
+# -------- Parse email structure - headers, body, positions of each element ---------
 
 
 # Regex to find email elements
@@ -417,6 +366,61 @@ def split_recipients(raw: Optional[str]) -> List[Dict[str, Optional[str]]]:
     return recipients
 
 
+# --- Extract Emails from AnalyzeResult ---
+
+def extract_emails_alt(analyze_result):
+    # Usage:
+    # analyze_result = client.begin_analyze_document("prebuilt-layout", document).result()
+    # email_paragraphs = extract_emails_from_analyze_result(analyze_result)
+    # print(email_paragraphs)
+
+    raw_text = analyze_result.content
+
+    # Regex to find emails
+    email_pattern = re.compile(
+        r"From:\s*(?P<from>.+?)\s*To:\s*(?P<to>.+?)\s*Subject:\s*(?P<subject>.+?)\s*Date:\s*(?P<date>.+?)\s*(?P<body>(?:.|\n)*?)(?=From:|$)",
+        re.MULTILINE
+    )
+
+    email_paragraphs = []
+
+    for match in email_pattern.finditer(raw_text):
+        start_offset = match.start()
+        end_offset = match.end()
+        email_text = raw_text[start_offset:end_offset]
+
+        # Collect bounding regions across pages
+        merged_points = []
+        for page in analyze_result.pages:
+            for region in page.get("boundingRegions", []):
+                span_offset = region["span"]["offset"]
+                if start_offset <= span_offset < end_offset:
+                    merged_points.extend(region["polygon"])
+
+        # Merge bounding box if points exist
+        merged_region = None
+        if merged_points:
+            xs = [p["x"] for p in merged_points]
+            ys = [p["y"] for p in merged_points]
+            merged_polygon = [
+                {"x": min(xs), "y": min(ys)},
+                {"x": max(xs), "y": min(ys)},
+                {"x": max(xs), "y": max(ys)},
+                {"x": min(xs), "y": max(ys)}
+            ]
+            merged_region = {"pageNumber": None, "polygon": merged_polygon}
+
+        # Build custom paragraph-like object
+        paragraph = {
+            "content": email_text,
+            "role": "email",
+            "span": {"offset": start_offset, "length": end_offset - start_offset},
+            "bounding_region": merged_region
+        }
+        email_paragraphs.append(paragraph)
+
+    return email_paragraphs
+
 
 def parse_single_email_block(block_text: str, block_global_offset: int) -> Dict[str, Any]:
     """
@@ -472,10 +476,6 @@ def parse_single_email_block(block_text: str, block_global_offset: int) -> Dict[
     }
 
 
-
-
-import re
-
 def parse_email_block(block_text, global_offset):
     """
     Parse a single email block into headers and body.
@@ -514,13 +514,13 @@ def parse_email_block(block_text, global_offset):
             body_lines.append(line)
         current_offset += line_len
 
+    headers = _get_headers(block_text)
     body_text = "\n".join(body_lines).strip()
     return {
         "headers": headers,
         "body": body_text,
         "span": {"offset": global_offset, "length": len(block_text)}
     }
-
 
 
 def split_thread_into_email_blocks(full_text: str):
@@ -547,7 +547,6 @@ def split_thread_into_email_blocks(full_text: str):
     return blocks
 
 
-
 def parse_thread(full_text: str) -> List[Dict[str, Any]]:
     blocks = split_thread_into_email_blocks(full_text)
     emails = []
@@ -555,8 +554,6 @@ def parse_thread(full_text: str) -> List[Dict[str, Any]]:
         # emails.append(parse_single_email_block(block, start))
         emails.append(parse_email_block(block, start))
     return emails
-
-
 
 
 def extract_emails(analyze_result):
@@ -650,9 +647,6 @@ def extract_emails(analyze_result):
     return emails
 
 
-
-
-
 def merge_bounding_boxes(analyze_result, start_offset, end_offset):
     """Merge bounding boxes for all lines that intersect with the email span."""
     all_points = []
@@ -678,10 +672,6 @@ def merge_bounding_boxes(analyze_result, start_offset, end_offset):
         {"x": min(xs), "y": max(ys)}
     ]
     return {"pageNumber": None, "polygon": merged_polygon}
-
-
-
-
 
 
 def normalize_with_map(s: str) -> Tuple[str, List[int]]:
@@ -712,7 +702,6 @@ def normalize_with_map(s: str) -> Tuple[str, List[int]]:
     # Don’t strip to avoid remapping; instead, trim logical search windows later if needed.
     norm = ''.join(norm_chars)
     return norm, idx_map
-
 
 
 def get_body_span(email: Dict[str, Any], analyze_result_content: str) -> Dict[str, Any]:
@@ -754,7 +743,6 @@ def get_body_span(email: Dict[str, Any], analyze_result_content: str) -> Dict[st
     return email
 
 
-
 def per_page_boxes_for_span(analyze_result, start_offset: int, end_offset: int) -> Dict[int, Dict[str, float]]:
     """
     Returns merged rectangles per page that intersect [start_offset, end_offset).
@@ -791,6 +779,8 @@ def per_page_boxes_for_span(analyze_result, start_offset: int, end_offset: int) 
     return per_page_boxes
 
 
+
+# --------- Find Stacked Email Duplicates ---------
 
 
 def find_stacked_email_duplicates(
@@ -905,12 +895,6 @@ def find_stacked_email_duplicates(
 
     return results
 
-
-
-
-import re
-import difflib
-from typing import List, Dict, Any, Optional
 
 def find_duplicate_emails(
     emails: List[Dict[str, Any]],
@@ -1070,3 +1054,230 @@ def find_duplicate_emails(
                     })
 
     return duplicates
+
+
+
+# --------- Email structure detection utils ---------
+
+# --- Generic header line: "<name> : <value>" (name: letters, spaces, hyphens) ---
+HEADER_LINE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z\- ]{0,40}?)\s*:\s*(.+)$")
+
+# Canonicalization for common email headers (add more as needed)
+def _canon_header_name(raw: str) -> Optional[str]:
+    name = raw.strip().lower()
+    name = re.sub(r"\s+", " ", name)      # collapse spaces
+    name = name.replace("–", "-").replace("—", "-")  # normalize dashes
+
+    synonyms = {
+        "from": "from",
+        "to": "to",
+        "cc": "cc",
+        "bcc": "bcc",
+        "subject": "subject",
+        "date": "date",
+        "sent": "date",               # Outlook exports
+        "reply-to": "reply_to",
+        "reply to": "reply_to",
+        "message-id": "message_id",
+        "mime-version": "mime_version",
+        "content-type": "content_type",
+        "attachments": "attachments",
+        "attachment": "attachments",
+    }
+    # also normalize awkward spacing around hyphens (e.g., "reply - to")
+    name = name.replace(" - ", "-")
+    return synonyms.get(name, None)  # return None for unknown headers
+
+EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}\b")
+
+ORIGINAL_MSG_RE = re.compile(r"^-{2,}\s*original message\s*-{2,}$", re.I)
+ON_WROTE_RE = re.compile(r"^\s*on .{0,200}wrote:?\s*$", re.I)
+
+def _safe_get_text(analyze_result) -> str:
+    """
+    Prefer paragraph content, skipping page header/footer if present.
+    Fall back to analyze_result.content.
+    """
+    text: Optional[str] = getattr(analyze_result, "content", None)
+    paragraphs = getattr(analyze_result, "paragraphs", None)
+    if paragraphs:
+        parts = []
+        for p in paragraphs:
+            p_text = getattr(p, "content", None)
+            p_role = getattr(p, "role", None)
+            if not p_text:
+                continue
+            if p_role and str(p_role).lower() in {"pageheader", "pagefooter", "footnote"}:
+                continue
+            parts.append(p_text)
+        if parts:
+            return "\n".join(parts)
+    return text or ""
+
+def _match_header(line: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Try to match an email-style header in the *original line*.
+    Returns (canonical_header_name, value) or (None, None).
+    """
+    m = HEADER_LINE_RE.match(line)
+    if not m:
+        return None, None
+    raw_name, value = m.group(1), m.group(2)
+    canon = _canon_header_name(raw_name)
+    if not canon:
+        return None, None
+    return canon, value.strip()
+
+
+def _consume_header_block(lines: List[str], start: int, max_span: int = 60) -> Tuple[int, Dict[str, str]]:
+    """
+    Consume a contiguous block of headers, splitting lines that contain multiple headers.
+    """
+    headers: Dict[str, str] = {}
+    i = start
+    end = min(len(lines), start + max_span)
+    blanks_tolerated = 0
+
+    while i < end:
+        raw = lines[i]
+        line = raw if isinstance(raw, str) else _normalize_text(raw)
+
+        if not line.strip():
+            blanks_tolerated += 1
+            if blanks_tolerated <= 1:
+                i += 1
+                continue
+            break
+
+        # Split line into possible multiple headers
+        parts = re.split(r"(?=\b(?:From|To|Subject|Date|Sent|Cc|Bcc|Reply-To)\b\s*:)", line)
+        matched_any = False
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            hname, hval = _match_header(part)
+            if hname:
+                headers[hname] = (headers.get(hname, "") + " " + hval).strip()
+                matched_any = True
+
+        if not matched_any:
+            # Non-header line ends the block
+            break
+
+        i += 1
+
+    return i, headers
+
+
+def _headers_look_emaily(headers: Dict[str, str]) -> bool:
+    """
+    Require a plausible combination. Typical emails have at least 2 of:
+    From, To, Subject, Date/Sent (optionally CC/BCC/Reply-To).
+    Technical headers can help, but are not required.
+    """
+    key = {"from", "to", "subject", "date", "cc", "bcc", "reply_to"}
+    tech = {"message_id", "mime_version", "content_type"}
+    count_key = len(key & headers.keys())
+    count_tech = len(tech & headers.keys())
+    # Loosen constraints slightly to accommodate exports with minimal headers
+    return (count_key >= 2) or (count_key >= 1 and count_tech >= 1)
+
+def _body_present(lines: List[str], start: int, *, window: int = 120, min_chars: int = 40) -> bool:
+    """
+    Look for body-like content in the next 'window' lines after 'start'.
+    Uses *cumulative* characters to handle short, wrapped lines from PDFs.
+    Stops when it hits another obvious header block/separator.
+    """
+    total = 0
+    n = len(lines)
+    for i in range(start, min(n, start + window)):
+        ln = lines[i]
+        if not ln.strip():
+            continue
+        if ORIGINAL_MSG_RE.match(ln.strip()):
+            break  # likely the start of another section
+        # If next line looks like a header, stop unless we've already found enough body
+        hname, _ = _match_header(ln.lstrip())
+        if hname:
+            return total >= min_chars
+        # Count alnum content
+        if re.search(r"[A-Za-z0-9]", ln):
+            total += len(ln.strip())
+            if total >= min_chars:
+                return True
+    return total >= min_chars
+
+def _get_headers(text_block: str) -> List[Dict[str, str]]:
+    """
+    Extract all header-like blocks from the document.
+    Returns a list of dicts of headers.
+    """
+    headers_list = []
+    lines = text_block.splitlines()
+
+    i, n = 0, len(lines)
+    while i < n:
+        line = lines[i]
+
+        hdr_end, headers = _consume_header_block(lines, i)
+        if headers:
+            headers_list.append(headers)
+            i = hdr_end
+        else:
+            i += 1
+
+    return headers_list
+
+def contains_email_message(analyze_result, *, debug: bool = False) -> bool:
+    """
+    Returns True if the document likely contains at least one full email
+    (header block + body), without requiring thread markers.
+    """
+    text = _safe_get_text(analyze_result)
+    if not text or not text.strip():
+        return False
+
+    # Preserve leading whitespace for correct continuation handling
+    lines = text.splitlines()
+
+    i, n = 0, len(lines)
+    while i < n:
+        line = lines[i]
+
+        # Thread markers (optional)
+        hdr_end, headers = _consume_header_block(lines, i + 1)
+        if _headers_look_emaily(headers) and _body_present(lines, hdr_end):
+            if debug:
+                print(f"Email detected after 'Original Message' at {i}-{hdr_end} with {list(headers.keys())}")
+            return True
+        i = hdr_end
+        continue
+
+        if ON_WROTE_RE.match(line.strip()):
+            neighborhood = " ".join(lines[max(0, i - 1): min(n, i + 2)])
+            if EMAIL_RE.search(neighborhood) and _body_present(lines, i + 1, window=80, min_chars=40):
+                if debug:
+                    print(f"Email detected via 'On … wrote:' at {i}")
+                return True
+            i += 1
+            continue
+
+        # Standalone header block anywhere
+        hname, _ = _match_header(line.lstrip())
+        if hname:
+            hdr_end, headers = _consume_header_block(lines, i)
+            if debug:
+                # print parsed headers for diagnostics
+                print(f"Header block at {i}-{hdr_end}: {headers}")
+            if _headers_look_emaily(headers) and _body_present(lines, hdr_end, window=150, min_chars=40):
+                if debug:
+                    print(f"Email detected via header block at {i}-{hdr_end} with {list(headers.keys())}")
+                return True
+            # Skip past what we consumed to keep scanning
+            i = max(i + 1, hdr_end)
+            continue
+
+        i += 1
+
+    return False
