@@ -1,9 +1,15 @@
 import os
 import time
 from dotenv import load_dotenv
-from azure_client import AzureAIClient
-from utils import create_detailed_suggestions
 from azure.ai.documentintelligence.models import DocumentParagraph
+
+try:
+    from azure_client import AzureAIClient
+    from utils import create_detailed_suggestions
+except:
+    from redactor.azure_client import AzureAIClient
+    from redactor.utils import create_detailed_suggestions
+
 
 def merge_small_paragraphs(paragraphs: list[DocumentParagraph], min_length: int = 50) -> list[DocumentParagraph]:
     """

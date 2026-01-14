@@ -1,23 +1,50 @@
 import os
 import json
-from typing import List, Dict
+import re
+from typing import List, Dict, Any, Tuple, Optional
+import numpy as np
+try:
+    from annoy import AnnoyIndex
+except ImportError:
+    AnnoyIndex = None
+try:
+    from sklearn.metrics.pairwise import cosine_similarity
+except ImportError:
+    cosine_similarity = None
 
 from redactor.utils import log_ner_output
 
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.ai.documentintelligence.models import AnalyzeResult
+from azure.ai.documentintelligence.models import AnalyzeResult, DocumentParagraph
 from azure.ai.textanalytics import TextAnalyticsClient, PiiEntityCategory
 from openai import AzureOpenAI
 
+EMAIL_HEADER_PATTERN = re.compile(
+    r"(from:.*?$|sent:.*?$|to:.*?$|subject:.*?$|cc:.*?$|bcc:.*?$)",
+    flags=re.IGNORECASE | re.MULTILINE
+)
+
+def normalize_text(text: Optional[str]) -> str:
+    """Normalize text for duplicate comparison (email-friendly)."""
+    if not text:
+        return ""
+    t = EMAIL_HEADER_PATTERN.sub("", text)      # strip common headers
+    t = re.sub(r"^>+\s?", "", t, flags=re.MULTILINE)  # remove quote markers
+    t = " ".join(t.lower().split())         # lower + collapse whitespace
+    return t
+
 class AzureAIClient:
     def __init__(self):
+        self.similarity_threshold = 0.99
+        self.faiss_top_k = 5
         try:
             doc_intel_endpoint = os.environ["AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT"]
             doc_intel_key = os.environ["AZURE_DOCUMENT_INTELLIGENCE_KEY"]
             openai_endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
             openai_key = os.environ["AZURE_OPENAI_KEY"]
             self.openai_deployment = os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"]
+            self.embedding_deployment = os.environ["AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"]
             self.openai_fast_deployment = os.environ["AZURE_OPENAI_GPT35_DEPLOYMENT_NAME"]
             self.openai_gpt4_mini_deployment = os.environ["AZURE_OPENAI_GPT41MINI_DEPLOYMENT_NAME"]
             self.openai_gpt5_deployment = os.environ["AZURE_OPENAI_GPT5_DEPLOYMENT_NAME"]
@@ -290,3 +317,118 @@ class AzureAIClient:
         except Exception as e:
             print(f"An error occurred while calling Azure OpenAI: {e}")
             return []
+
+
+    def _embed_paragraphs_batch(self, paragraphs: List[DocumentParagraph]) -> np.ndarray:
+        """Embed a batch of DocumentParagraph objects using Azure OpenAI - for duplicate detection using cosine similarity."""
+        inputs = [normalize_text(getattr(p, "content", None) or "") for p in paragraphs]
+        if not any(inputs):
+            return np.zeros((len(paragraphs), 1536), dtype=np.float32)
+        try:
+            resp = self.openai_client.embeddings.create(
+                model=self.embedding_deployment,
+                input=inputs
+            )
+            vecs = [np.array(item.embedding, dtype=np.float32) for item in resp.data]
+            return np.vstack(vecs).astype(np.float32) if vecs else np.zeros((len(paragraphs), 1536), dtype=np.float32)
+        except Exception as e:
+            print(f"Error embedding paragraphs: {e}")
+            return np.zeros((len(paragraphs), 1536), dtype=np.float32)
+
+
+    def detect_duplicates(self, text_blocks: list[DocumentParagraph], method: str = 'annoy') -> List[List[Dict[str, Any]]]:
+        """
+        Run exact and near-duplicate matching for each DocumentParagraph in the analysed document.
+        Uses either scikit-learn (exact cosine similarity) or Annoy (approximate) for similarity search.
+        
+        Args:
+            text_blocks: List of DocumentParagraph objects.
+            method: 'sklearn' for exact similarity, 'annoy' for approximate using Annoy.
+        
+        Returns:
+            A list of lists of dicts, where each item is a matched set of duplicates, each of
+            which contains a list of dicts, each dict representing information about the DocumentParagraph
+            that is potentially duplicated.
+        """
+        if not text_blocks:
+            return []
+
+        # Embed all paragraphs in batches
+        batch_size = 64
+        all_vecs = []
+        for i in range(0, len(text_blocks), batch_size):
+            batch = text_blocks[i:i + batch_size]
+            vecs = self._embed_paragraphs_batch(batch)
+            all_vecs.append(vecs)
+        vectors = np.vstack(all_vecs).astype(np.float32) if all_vecs else np.zeros((0, 1536), dtype=np.float32)
+
+        if vectors.shape[0] == 0:
+            return []
+
+        # Choose similarity method
+        if method == 'sklearn':
+            sim_matrix = cosine_similarity(vectors)
+            pairs = []
+            n = vectors.shape[0]
+            for i in range(n):
+                for j in range(i + 1, n):
+                    sim = float(sim_matrix[i, j])
+                    if sim >= self.similarity_threshold:
+                        pairs.append((i, j, sim))
+        elif method == 'annoy':
+            if AnnoyIndex is None:
+                raise ImportError("Annoy is not installed. Install with 'pip install annoy' or 'poetry add annoy'")
+            f = vectors.shape[1]
+            index = AnnoyIndex(f, 'angular')
+            for i, vec in enumerate(vectors):
+                index.add_item(i, vec)
+            index.build(10)  # n_trees
+            pairs = []
+            n = vectors.shape[0]
+            for i in range(n):
+                neighbors, distances = index.get_nns_by_item(i, self.faiss_top_k + 1, include_distances=True)
+                for j, dist in zip(neighbors, distances):
+                    if j > i:
+                        sim = 1 - (dist ** 2) / 2  # convert angular distance to cosine similarity
+                        if sim >= self.similarity_threshold:
+                            pairs.append((i, j, sim))
+        else:
+            raise ValueError("Invalid method. Choose 'sklearn' or 'annoy'")
+
+        # Group into duplicate sets using union-find
+        parent = list(range(len(text_blocks)))
+        def find(x):
+            if parent[x] != x:
+                parent[x] = find(parent[x])
+            return parent[x]
+        def union(x, y):
+            px, py = find(x), find(y)
+            if px != py:
+                parent[px] = py
+
+        for i, j, _ in pairs:
+            union(i, j)
+
+        # Collect groups
+        groups = {}
+        for i in range(len(text_blocks)):
+            p = find(i)
+            if p not in groups:
+                groups[p] = []
+            groups[p].append(i)
+
+        # Build output: list of lists of dicts
+        duplicate_groups = []
+        for group_indices in groups.values():
+            if len(group_indices) > 1:  # only groups with more than one
+                group_dicts = []
+                for idx in group_indices:
+                    para = text_blocks[idx]
+                    group_dicts.append({
+                        "index": idx,
+                        "content": getattr(para, "content", None) or "",
+                        "bounding_regions": getattr(para, "bounding_regions", None) or []
+                    })
+                duplicate_groups.append(group_dicts)
+
+        return duplicate_groups
