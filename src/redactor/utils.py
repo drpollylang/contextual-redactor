@@ -187,6 +187,87 @@ def create_detailed_suggestions(
             
     return detailed_suggestions
 
+
+# --- Mapping Duplicate Emails to Document Coordinates ---
+# def create_detailed_duplicate_emails(
+#     analysis: AnalyzeResult,
+#     duplicate_emails: list
+# ) -> list:
+#     """
+#     Maps duplicate email blocks to their specific coordinates (page and rects).
+#     Returns a list of dicts with id, text, category, context, page_num, rects.
+#     """
+#     detailed_duplicates = []
+#     scaling_factor = 72.0
+#     for idx, email in enumerate(duplicate_emails):
+#         # Use the body span if available, else fallback to the whole email span
+#         span = email.get("body_span") or email.get("span")
+#         if not span:
+#             continue
+#         start_offset = span.get("offset", 0)
+#         end_offset = start_offset + span.get("length", 0)
+#         # Find bounding boxes for this span
+#         page_boxes = per_page_boxes_for_span(analysis, start_offset, end_offset)
+#         # For each page, create a suggestion dict
+#         for page_num, box in page_boxes.items():
+#             # Convert box to fitz.Rect
+#             rect = None
+#             if box:
+#                 rect = fitz.Rect(box["x1"]*scaling_factor, box["y1"]*scaling_factor, box["x2"]*scaling_factor, box["y2"]*scaling_factor)
+#             detailed_duplicates.append({
+#                 "id": f"dupemail_{idx}_{page_num}",
+#                 "text": email.get("body") or email.get("content", ""),
+#                 "category": "Duplicate Email",
+#                 "reasoning": "Detected as duplicate email content in thread.",
+#                 "context": email.get("content", ""),
+#                 "page_num": page_num - 1,
+#                 "rects": [rect] if rect else []
+#             })
+#     return detailed_duplicates
+
+
+def create_detailed_duplicate_emails(analysis, duplicate_emails):
+    detailed_duplicates = []
+    scaling_factor = 72.0
+
+    for idx, email in enumerate(duplicate_emails):
+        span = email.get("body_span") or email.get("span")
+        if not span:
+            continue
+
+        start = span["offset"]
+        end = start + span["length"]
+
+        page_boxes = per_page_boxes_for_span(analysis, start, end)
+
+        for page_num, box in page_boxes.items():
+            rect = None
+            if box:
+                # page = pdf[page_num - 1]  # PyMuPDF pages are 0-indexed
+                # w = page.rect.width
+                # h = page.rect.height
+
+                rect = fitz.Rect(
+                    box["x1"] * scaling_factor,
+                    box["y1"] * scaling_factor,
+                    box["x2"] * scaling_factor,
+                    box["y2"] * scaling_factor
+                )
+
+            detailed_duplicates.append({
+                "id": f"dupemail_{idx}_{page_num}",
+                "text": email.get("body") or email.get("content", ""),
+                "category": "Duplicate Email",
+                "reasoning": "Detected as duplicate email content in thread.",
+                "context": email.get("content", ""),
+                "page_num": page_num - 1,
+                "rects": [rect] if rect else []
+            })
+
+    return detailed_duplicates
+
+
+
 # --- PDF to Image Conversion for Preview ---
 PREVIEW_DPI = 150
 def get_original_pdf_images(pdf_path):
@@ -519,6 +600,7 @@ def parse_email_block(block_text, global_offset):
     return {
         "headers": headers,
         "body": body_text,
+        "content": block_text,
         "span": {"offset": global_offset, "length": len(block_text)}
     }
 
@@ -531,9 +613,20 @@ def split_thread_into_email_blocks(full_text: str):
     text = full_text.strip()
 
     # Regex: detect new email boundaries
+    # marker = re.compile(
+    #     r"(?im)(?=^\s*From:|^\s*-{2,}\s*Original Message\s*-{2,}|^\s*On\s.+?\s+wrote:)",
+    #     re.MULTILINE
+    # )
+    
+    # Matches start of any new email *even if there is leading whitespace*
+    # marker = re.compile(
+    #     r"(?im)(?=^[\t >\u00A0]*From:|^[\t >\u00A0]*On\s+.+?\s+wrote:|^[\t >\u00A0]*[-]{2,}\s*Original Message)",
+    #     re.MULTILINE
+    # )
+
+    # Unified boundary pattern: match anywhere — even mid-line
     marker = re.compile(
-        r"(?im)(?=^\s*From:|^\s*-{2,}\s*Original Message\s*-{2,}|^\s*On\s.+?\s+wrote:)",
-        re.MULTILINE
+        r"(?i)(?=From:\s*[A-Z]|On\s+.+?\s+wrote:)", re.MULTILINE
     )
 
     indices = [m.start() for m in marker.finditer(text)]

@@ -1,14 +1,14 @@
 import os
 import time
 from dotenv import load_dotenv
-from azure.ai.documentintelligence.models import DocumentParagraph
+from azure.ai.documentintelligence.models import DocumentParagraph, AnalyzeResult
 
 try:
     from azure_client import AzureAIClient
-    from utils import create_detailed_suggestions
+    from utils import create_detailed_suggestions, contains_email_message, parse_thread, find_duplicate_emails, create_detailed_duplicate_emails
 except:
     from redactor.azure_client import AzureAIClient
-    from redactor.utils import create_detailed_suggestions
+    from redactor.utils import create_detailed_suggestions, contains_email_message, parse_thread, find_duplicate_emails, create_detailed_duplicate_emails
 
 
 def merge_small_paragraphs(paragraphs: list[DocumentParagraph], min_length: int = 50) -> list[DocumentParagraph]:
@@ -40,7 +40,18 @@ def merge_small_paragraphs(paragraphs: list[DocumentParagraph], min_length: int 
     return merged_paragraphs
 
 
-def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
+def analyse_document_structure(input_pdf_path: str) -> AnalyzeResult:
+    load_dotenv()
+    azure_client = AzureAIClient()
+
+    print("Step 0: Analysing document layout...")
+    analysis_result = azure_client.analyse_document(input_pdf_path)
+    if not analysis_result.paragraphs: return []
+    return analysis_result
+
+
+# def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
+def analyse_document_for_redactions(analysis_result: AnalyzeResult, user_context: str):
     """
     Orchestrates the hybrid AI analysis with conditional entity linking and contextual DOB filtering.
     - Paragraph-by-paragraph for structured PII.
@@ -57,14 +68,12 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
     pii_exceptions = [exc.lower() for exc in parsed_instructions.get("exceptions", [])]
     sensitive_content_rules = parsed_instructions.get("sensitive_content_rules")
     print(f"Found {len(pii_exceptions)} PII exceptions and a sensitive content rule: {'Yes' if sensitive_content_rules else 'No'}")
-    # print(f"Time taken to parse instructions: {time_elapsed:.3f} seconds\n")
 
     # Analyse and merge 
-    print("Step 2: Analysing document layout...")
-    start = time.perf_counter()
-    analysis_result = azure_client.analyse_document(input_pdf_path)
-    time_elapsed_doc_analysis = time.perf_counter() - start
-    # print(f"Time taken to analyse document layout: {time_elapsed:.3f} seconds\n")
+    # print("Step 2: Analysing document layout...")
+    # start = time.perf_counter()
+    # analysis_result = azure_client.analyse_document(input_pdf_path)
+    # time_elapsed_doc_analysis = time.perf_counter() - start
     if not analysis_result.paragraphs: return []
     print("Step 3: Merging small paragraphs...")
     paragraphs = merge_small_paragraphs(analysis_result.paragraphs)
@@ -152,7 +161,6 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
                         })
 
     time_elapsed_extract_pii_entity_linking = time.perf_counter() - start
-    # print(f"Time taken to get potential PII entities (NER), entity linking, is_school and exceptions: {time_elapsed:.3f} seconds\n")
 
     # Nuanced LLM analysis for sensitive content
     start = time.perf_counter()
@@ -175,7 +183,6 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
                     })
 
     time_elapsed_sensitive_content = time.perf_counter() - start
-    # print(f"Time taken for LLM analysis for sensitive content: {time_elapsed:.3f} seconds\n")
 
     if not all_findings_with_source: return []
     print(f"Found a total of {len(all_findings_with_source)} potential redactions.")
@@ -184,9 +191,42 @@ def analyse_document_for_redactions(input_pdf_path: str, user_context: str):
     print("Step 5: Creating detailed suggestions...")
     detailed_suggestions = create_detailed_suggestions(analysis_result, all_findings_with_source)
     time_elapsed_suggestions = time.perf_counter() - start
-    # print(f"Time taken to create detailed suggestions: {time_elapsed:.3f} seconds\n")
 
-    print(f"Time elapsed by model call:\n1. Parse Instructions: {time_elapsed_parse_instructions:.3f} seconds\n2. Document Analysis: {time_elapsed_doc_analysis:.3f} seconds\n3. PII Extraction & Entity Linking: {time_elapsed_extract_pii_entity_linking:.3f} seconds\n4. Sensitive Content Analysis: {time_elapsed_sensitive_content:.3f} seconds\n5. Suggestions Mapping: {time_elapsed_suggestions:.3f} seconds\n")
+    # print(f"Time elapsed by model call:\n1. Parse Instructions: {time_elapsed_parse_instructions:.3f} seconds\n2. Document Analysis: {time_elapsed_doc_analysis:.3f} seconds\n3. PII Extraction & Entity Linking: {time_elapsed_extract_pii_entity_linking:.3f} seconds\n4. Sensitive Content Analysis: {time_elapsed_sensitive_content:.3f} seconds\n5. Suggestions Mapping: {time_elapsed_suggestions:.3f} seconds\n")
     
     return detailed_suggestions
 
+
+def detect_email_duplicates(analysis_result: AnalyzeResult) -> list[str]:
+    """
+    Checks the document for one or more emails. If emails are present, scans for duplicate emails
+    in stacked email threads. Returns a list of dicts containing the text and location of each duplicate email.
+    """
+    # Check doc for emails
+    if contains_email_message(analysis_result):
+        print("Document contains email messages. Scanning for duplicate emails...")
+    else:
+        print("No email messages detected in document.")
+        return
+    
+    # Parse email thread and extract emails
+    try:
+        emails = parse_thread(analysis_result.content)
+        duplicates = find_duplicate_emails(emails)
+        print(f"Found {len(duplicates)} duplicate emails in the document.")
+    except Exception as e:
+        print(f"Error extracting emails and scanning for duplicates: {e}")
+        return
+    
+    # Match duplicates to their locations in the document
+    duplicate_indices = set()
+    for dup in duplicates:
+        duplicate_indices.add(dup['target_email_index'])
+    duplicate_emails = []
+    for i, email in enumerate(emails):
+        if i in duplicate_indices:
+            duplicate_emails.append(email)
+    
+    return create_detailed_duplicate_emails(analysis_result, duplicate_emails)
+
+    

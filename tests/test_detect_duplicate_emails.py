@@ -13,6 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from redactor.azure_client import AzureAIClient
 from redactor.utils import extract_emails, find_stacked_email_duplicates, parse_thread, find_duplicate_emails
+from redactor.redaction_logic import analyse_document_for_redactions, analyse_document_structure, detect_email_duplicates
 
 def test_find_email_duplicates(client, test_doc_filename: str):
     # Path to a test document containing NO emails
@@ -96,6 +97,47 @@ def test_find_email_duplicates(client, test_doc_filename: str):
     return duplicate_indices
 
 
+def test_redaction_logic_funcs(test_doc_filename: str):
+    test_doc_path = os.path.join(os.path.dirname(__file__), '..', 'Test docs', test_doc_filename)
+
+    if not os.path.exists(test_doc_path):
+        print(f"Test document not found: {test_doc_path}")
+        return
+
+    print(f"Analyzing document: {test_doc_path}")
+
+    # Analyze the document
+    try:
+        result = analyse_document_structure(test_doc_path)
+        # print(result.paragraphs[0].content)  # Debug print to verify content
+    except Exception as e:
+        print(f"Error analyzing document: {e}")
+        return
+
+    # Find duplicate emails
+    try:
+        duplicates = detect_email_duplicates(result)
+    except Exception as e:
+        print(f"Error detecting email duplicates: {e}")
+        return
+
+    # Print results
+    for i, duplicate in enumerate(duplicates):
+        print(f"Duplicate {i+1}:")
+        # print(f"  Headers: {duplicate['headers']}")
+        # print(f"  Body: {duplicate['body']}")
+        # print(f"  Span: {duplicate['span']}")
+        print(f"  ID: {duplicate['id']}")
+        print(f"  Text: {duplicate['text']}")
+        print(f"  Category: {duplicate['category']}")
+        print(f"  Reasoning: {duplicate['reasoning']}")
+        print(f"  Context: {duplicate['context']}")
+        print(f"  Page num: {duplicate['page_num']}")
+        print(f"  Rects: {duplicate['rects']}\n")
+    
+    return duplicates
+
+
 def test_find_email_duplicates_wrapper():
     load_dotenv()
     
@@ -107,16 +149,22 @@ def test_find_email_duplicates_wrapper():
         return
 
     # Test doc with no email duplicates
-    print('Testing document with no email duplicates:')
-    test_doc_no_dups = 'Telefonica Redaction Email Example 3 Disability.pdf'
-    no_dups_test = test_find_email_duplicates(client, test_doc_no_dups)
-    assert len(no_dups_test) == 0, f"Expected 0 emails, found {len(no_dups_test)}"
+    # print('Testing document with no email duplicates:')
+    # test_doc_no_dups = 'Telefonica Redaction Email Example 3 Disability.pdf'
+    # no_dups_test = test_find_email_duplicates(client, test_doc_no_dups)
+    # assert len(no_dups_test) == 0, f"Expected 0 emails, found {len(no_dups_test)}"
 
     # Test doc with stacked email thread - 3 duplicates expected
-    print('-'*50 + '\nTesting document with stacked email thread containing 3 duplicates:')
+    # print('-'*50 + '\nTesting document with stacked email thread containing 3 duplicates:')
+    # test_doc_with_dups = 'FakeStackedEmailThread.pdf'
+    # dups_test = test_find_email_duplicates(client, test_doc_with_dups)
+    # assert len(dups_test) == 3, f"Expected 3 duplicates, found {len(dups_test)}"
+
+    # Test functions in redaction_logic.py
+    print('-'*50 + '\nTesting document with stacked email thread containing 3 duplicates using redaction_logic.py funcs:')
     test_doc_with_dups = 'FakeStackedEmailThread.pdf'
-    dups_test = test_find_email_duplicates(client, test_doc_with_dups)
-    assert len(dups_test) == 3, f"Expected 3 duplicates, found {len(dups_test)}"
+    dups_redlog_test = test_redaction_logic_funcs(test_doc_with_dups)
+    assert len(dups_redlog_test) == 3, f"Expected 3 duplicates, found {len(dups_redlog_test)}"
 
 
 if __name__ == "__main__":

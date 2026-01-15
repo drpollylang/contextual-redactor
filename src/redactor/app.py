@@ -2,19 +2,36 @@ import streamlit as st
 import fitz  # PyMuPDF
 import os
 import time
+import requests, base64
+from io import BytesIO
 from collections import defaultdict
 from PIL import ImageDraw, Image
 from streamlit_drawable_canvas import st_canvas
-from redaction_logic import analyse_document_for_redactions
+from redaction_logic import analyse_document_for_redactions, analyse_document_structure, detect_email_duplicates
 from pdf_processor import PDFProcessor
 from utils import get_original_pdf_images
-
+from pdf_edit_client import call_pdf_edit_api, rect_to_payload, canvas_obj_to_page_rect
 
 st.set_page_config(page_title="AI Document Redactor", layout="wide")
 
 PREVIEW_DPI = 150
 # Define a fixed display width for the canvas to prevent overflow
 CANVAS_DISPLAY_WIDTH = 800
+
+API_URL = st.secrets.get("PDF_API_URL", "http://localhost:8008")  # set via .streamlit/secrets.toml
+
+
+# def fetch_overlay_image(pdf_bytes: bytes, page_index: int, rect: dict, api_url: str):
+#     payload = {
+#         "pdf_b64": base64.b64encode(pdf_bytes).decode("utf-8"),
+#         "page_index": page_index,
+#         "rect": rect,
+#         "dpi": 120
+#     }
+#     r = requests.post(f"{api_url.rstrip('/')}/v1/debug/overlay", json=payload, timeout=60)
+#     r.raise_for_status()
+#     return Image.open(BytesIO(r.content))
+
 
 def main():
     """The main function that runs the Streamlit application."""
@@ -26,6 +43,8 @@ def main():
         st.session_state.processed_file = None
     if 'final_pdf_path' not in st.session_state:
         st.session_state.final_pdf_path = None
+    if 'pdf_bytes' not in st.session_state:
+        st.session_state.pdf_bytes = None
     if 'approval_state' not in st.session_state:
         st.session_state.approval_state = {}
     if 'original_pdf_images' not in st.session_state:
@@ -42,6 +61,13 @@ def main():
         st.session_state.last_promoted_ids = []
     if 'time_elapsed' not in st.session_state:
         st.session_state.time_elapsed = None
+    if 'duplicate_emails' not in st.session_state:
+        st.session_state.duplicate_emails = []
+    if 'duplicate_email_state' not in st.session_state:
+        st.session_state.duplicate_email_state = {}
+    if "removed_sections" not in st.session_state:
+        st.session_state.removed_sections = {}  # {page_index: [fitz.Rect, ...]}
+
 
     # --- Main App UI ---
     st.title("AI-Powered Document Redaction Tool")
@@ -64,6 +90,7 @@ def main():
     )
 
     if uploaded_file is not None:
+        st.session_state.pdf_bytes = uploaded_file.getvalue()
         input_pdf_path = os.path.join(temp_dir, uploaded_file.name)
         with open(input_pdf_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
@@ -74,7 +101,9 @@ def main():
                 with st.spinner("Rendering document preview..."):
                     st.session_state.original_pdf_images = get_original_pdf_images(input_pdf_path)
             st.session_state.suggestions = []
+            st.session_state.duplicate_emails = []
             st.session_state.approval_state = {}
+            st.session_state.duplicate_email_state = {}
             st.session_state.final_pdf_path = None
             st.session_state.manual_rects = defaultdict(list)
             st.session_state.active_page_index = 0
@@ -82,10 +111,14 @@ def main():
             start = time.perf_counter()
             
             with st.spinner("Analysing document with your instructions..."):
-                suggestions = analyse_document_for_redactions(input_pdf_path, st.session_state.user_context)
+                analysed_document = analyse_document_structure(input_pdf_path)
+                suggestions = analyse_document_for_redactions(analysed_document, st.session_state.user_context)
+                duplicate_emails = detect_email_duplicates(analysed_document)
                 st.session_state.suggestions = suggestions
+                st.session_state.duplicate_emails = duplicate_emails
                 st.session_state.processed_file = input_pdf_path
                 st.session_state.approval_state = {s['id']: True for s in suggestions}
+                st.session_state.duplicate_email_state = {d['id']: True for d in duplicate_emails}
                 st.session_state.original_pdf_images = get_original_pdf_images(input_pdf_path)
             
             # Stop timer
@@ -101,12 +134,68 @@ def main():
         st.success(f"Completed in {st.session_state.time_elapsed:.3f} seconds")
         # st.metric(label="Time Elapsed", value=f"{st.session_state.time_elapsed:.3f}s")
 
+    
+    def apply_removals_for_page(page_index: int, rects: list, api_url: str):
+        """
+        rects: list[fitz.Rect] in page coordinates to remove on this page
+        """
+        if not rects:
+            st.warning("No sections to remove on this page.")
+            return
 
-    if st.session_state.suggestions:
+        # Ensure bytes in state (defensive)
+        if "pdf_bytes" not in st.session_state or not isinstance(st.session_state.pdf_bytes, (bytes, bytearray)):
+            st.error("PDF not loaded correctly in memory. Please re-upload.")
+            return
+
+        operations = [{
+            "page_index": page_index,
+            "rects": [rect_to_payload(r) for r in sorted(rects, key=lambda r: r.y0)]
+        }]
+
+        with st.spinner("Applying removals and reflow..."):
+            try:
+                new_pdf_bytes = call_pdf_edit_api(st.session_state.pdf_bytes, operations, api_url=API_URL, font_mode="auto")
+            except Exception as e:
+                st.error(f"API error: {e}")
+                return
+
+        # Replace working bytes in session
+        st.session_state.pdf_bytes = new_pdf_bytes
+
+        # Overwrite the temp file so your preview renders the updated document
+        if "processed_file" in st.session_state and st.session_state.processed_file:
+            with open(st.session_state.processed_file, "wb") as f:
+                f.write(new_pdf_bytes)
+
+        # Re-render page images from the updated file
+        with st.spinner("Refreshing preview..."):
+            st.session_state.original_pdf_images = get_original_pdf_images(st.session_state.processed_file)
+
+        st.success("Removals applied.")
+        st.rerun()
+
+    
+    def ensure_pdf_bytes_in_state():
+        """Make sure st.session_state.pdf_bytes exists and is bytes."""
+        if "pdf_bytes" in st.session_state and isinstance(st.session_state.pdf_bytes, (bytes, bytearray)):
+            return
+        # Fallback: load from processed_file path if present
+        if "processed_file" in st.session_state and st.session_state.processed_file:
+            with open(st.session_state.processed_file, "rb") as f:
+                st.session_state.pdf_bytes = f.read()
+        else:
+            st.error("No PDF loaded. Please upload a PDF.")
+            st.stop()
+
+
+    if st.session_state.suggestions or st.session_state.duplicate_emails:
         st.header("Review and Refine Redactions")
         col1, col2 = st.columns([1, 3])
-        
+
         with col1:
+            
+            
             st.subheader("AI Suggestions")
             st.write("Control all instances of a term or expand to manage each one individually.")
             doc = fitz.open(st.session_state.processed_file)
@@ -114,7 +203,7 @@ def main():
             grouped_suggestions = defaultdict(list)
             for s in st.session_state.suggestions:
                 grouped_suggestions[s['text']].append(s)
-            
+
             for text, instances in grouped_suggestions.items():
                 all_ids = [inst['id'] for inst in instances]
                 all_checked = all(st.session_state.approval_state.get(id, False) for id in all_ids)
@@ -129,13 +218,11 @@ def main():
 
                 with st.expander("Show individual occurrences"):
                     for instance in instances:
-                        
                         if instance['category'] != 'Manual Selection':
                             context = instance['context']
                             start = max(0, context.find(text) - 30)
                             end = min(len(context), start + len(text) + 60)
                             label = f"Pg {instance['page_num'] + 1}: ...{context[start:end]}..." 
-
                         else:
                             page = doc[instance['page_num']]
                             if instance['rects']:
@@ -148,11 +235,152 @@ def main():
                                 label = f"Pg {instance['page_num'] + 1}: ...{highlighted_snippet}..."
                             else:
                                 label = f"Pg {instance['page_num'] + 1}: (No context preview available)"
-                        
                         st.session_state.approval_state[instance['id']] = st.checkbox(
                             label, value=st.session_state.approval_state.get(instance['id'], True), key=f"cb_{instance['id']}"
                         )
             doc.close()
+
+            # if st.session_state.duplicate_emails:
+            #     st.subheader("Duplicate Emails Detected")
+            #     st.write("Review duplicate emails. You can remove their content and refactor the document.")
+            #     doc = fitz.open(st.session_state.processed_file)
+            #     remove_state = {}
+            #     for dup in st.session_state.duplicate_emails:
+            #         context = dup['context']
+            #         text = dup['text']
+            #         start = max(0, context.find(text) - 30)
+            #         end = min(len(context), start + len(text) + 60)
+            #         label = f"Pg {dup['page_num'] + 1}: ...{context[start:end]}..."
+            #         remove_state[dup["id"]] = st.checkbox(
+            #             f"Remove duplicate: {label}", value=st.session_state.duplicate_email_state.get(dup['id'], True), key=f"dup_{dup['id']}"
+            #         )
+            #         # remove_state[dup["id"]] = st.checkbox(f"Remove duplicate {dup['id']}", value=True, key=f"dupemail_{page_index}_{dup['id']}")
+            #         st.session_state.duplicate_email_state[dup['id']] = remove_state
+                
+            #     # ------ add a button to remove duplicate emails and refactor the document here-----
+            #     # Build operations payload from UNCHECKED sections
+            #     checked_sections = [d for d in st.session_state.duplicate_emails if remove_state[d["id"]]]
+            #     rects_payload = [rect_to_payload(d["rects"][0]) for d in sorted(checked_sections, key=lambda x: x["rects"][0].y0)]
+
+            #     if st.button("Apply removals (checked sections) on this page", key=f"apply_{st.session_state.active_page_index}"):
+            #         if not rects_payload:
+            #             st.warning("No sections to remove.")
+            #             return
+
+            #         operations = [{"page_index": st.session_state.active_page_index, "rects": rects_payload}]
+            #         try:
+            #             new_pdf = call_pdf_edit_api(st.session_state.processed_file, operations, API_URL)
+            #         except Exception as e:
+            #             st.error(f"API error: {e}")
+            #             return
+
+            #         # Replace working PDF in state and rerun
+            #         st.session_state.processed_file = new_pdf
+            #         st.rerun()
+
+            #     doc.close()
+
+            
+            if st.session_state.duplicate_emails:
+                st.subheader("Duplicate Emails Detected")
+                st.write("Review duplicate emails. You can remove their content and refactor the document.")
+
+                # Ensure we have in-memory bytes ready for the API
+                ensure_pdf_bytes_in_state()
+
+                # (Optional) open the doc if you need page sizes; not required for this block
+                # doc = fitz.open("pdf", st.session_state.pdf_bytes)
+
+                # Build checkbox UI and remember per-duplicate state
+                remove_state = {}
+                for dup in st.session_state.duplicate_emails:
+                    context = dup.get('context', '') or ''
+                    text = dup.get('text', '') or ''
+                    start = max(0, context.find(text) - 30) if text else 0
+                    end = min(len(context), start + len(text) + 60) if text else min(len(context), 90)
+
+                    # dup['page_num'] should be 0-based; adjust label only
+                    label = f"Pg {dup['page_num'] + 1}: ...{context[start:end]}..."
+
+                    # Default value: remove = True (checked means remove)
+                    default_val = st.session_state.duplicate_email_state.get(dup['id'], True)
+                    remove_state[dup["id"]] = st.checkbox(
+                        f"Remove duplicate: {label}",
+                        value=default_val,
+                        key=f"dup_{dup['id']}"
+                    )
+                    # Store just the boolean for this id (not the whole dict)
+                    st.session_state.duplicate_email_state[dup['id']] = remove_state[dup['id']]
+
+                # ---- Build operations payload from CHECKED sections (to remove) ----
+                # Filter the duplicates the user checked for removal and that have rects
+                to_remove = [
+                    d for d in st.session_state.duplicate_emails
+                    if remove_state.get(d["id"], False) and d.get("rects") and len(d["rects"]) > 0
+                ]
+
+                # Group rects by page, and sort rects top->bottom within page
+                rects_by_page = defaultdict(list)
+                for d in to_remove:
+                    page_idx = d["page_num"]  # assume 0-based page index
+                    r = d["rects"][0]         # fitz.Rect in PAGE coordinates
+                    rects_by_page[page_idx].append(r)
+
+                operations = []
+                for page_idx, rects in rects_by_page.items():
+                    rects_sorted = sorted(rects, key=lambda r: r.y0)
+                    operations.append({
+                        "page_index": page_idx,
+                        "rects": [rect_to_payload(r) for r in rects_sorted]
+                    })
+                  
+                # 🔍 DEBUG HERE: PRINT EXACT RECTS YOU ARE SENDING
+                st.write("DEBUG: Rects going to API (before clicking):")
+                for rp in rects_by_page.items():
+                    st.write(rp)
+                st.write("FINAL OPERATIONS:", operations)
+
+                # Button applies removals across all pages represented in 'operations'
+                if st.button("Apply removals (checked sections)", key=f"apply_dupes"):
+                    if not operations:
+                        st.warning("No sections to remove.")
+                        st.stop()
+
+                    # Call API with BYTES, not a path
+                    try:
+                        new_pdf_bytes = call_pdf_edit_api(
+                            st.session_state.pdf_bytes,  # <-- BYTES here
+                            operations,
+                            API_URL
+                        )
+                    except Exception as e:
+                        st.error(f"API error: {e}")
+                        st.stop()
+
+                    # Update canonical in-memory bytes
+                    st.session_state.pdf_bytes = new_pdf_bytes
+
+                    # Mirror to disk (so any file-path-based preview continues to work)
+                    if "processed_file" in st.session_state and st.session_state.processed_file:
+                        with open(st.session_state.processed_file, "wb") as f:
+                            f.write(new_pdf_bytes)
+
+                    # Re-render previews after modification
+                    with st.spinner("Refreshing preview..."):
+                        st.session_state.original_pdf_images = get_original_pdf_images(st.session_state.processed_file)
+
+                    st.success("Removals applied and document reflowed.")
+                    st.rerun()
+
+                # if you opened doc above, close it
+                # doc.close()
+
+                # if st.checkbox("Show debug overlay for first rect on this page"):
+                #     if operations and operations[0]["rects"]:
+                #         overlay = fetch_overlay_image(st.session_state.pdf_bytes, operations[0]["page_index"], operations[0]["rects"][0], API_URL)
+                #         st.image(overlay, caption="Debug overlay: red=remove rect, green=lines to remove", use_column_width=True)
+
+
 
         with col2:
             st.subheader("Interactive Document Preview")
@@ -291,13 +519,32 @@ def main():
                 dpi_to_display_scaling = (PREVIEW_DPI / 72.0) * display_scaling_factor
                 for suggestion in approved_ai_suggestions:
                     for rect in suggestion.get('rects', []):
+                        # print(f"Suggestion rect: {rect}")
                         scaled_rect = (
                             rect.x0 * dpi_to_display_scaling, rect.y0 * dpi_to_display_scaling,
                             rect.x1 * dpi_to_display_scaling, rect.y1 * dpi_to_display_scaling
                         )
                         draw.rectangle(scaled_rect, fill=redaction_fill)
 
-                # Composite the AI suggestions onto the background
+                # Draw duplicate email boxes in a different color (e.g., semi-transparent red)
+                duplicate_email_fill = (255, 0, 0, 102)  # Semi-transparent red
+                for d in st.session_state.duplicate_emails:
+                        print(f"Page index: {page_index}, Duplicate email id and page num: {d['id']} / {d['page_num']}")
+                approved_duplicate_emails = [
+                    d for d in st.session_state.duplicate_emails
+                    if st.session_state.duplicate_email_state.get(d['id']) and d['page_num'] == page_index
+                ]
+                for dup in approved_duplicate_emails:
+                    print(f'dup: {dup}')
+                    for rect in dup.get('rects', []):
+                        # print(f"Duplicate email rect: {rect}")
+                        scaled_rect = (
+                            rect.x0 * dpi_to_display_scaling, rect.y0 * dpi_to_display_scaling,
+                            rect.x1 * dpi_to_display_scaling, rect.y1 * dpi_to_display_scaling
+                        )
+                        draw.rectangle(scaled_rect, fill=duplicate_email_fill)
+
+                # Composite the AI suggestions and duplicate emails onto the background
                 final_bg_image = Image.alpha_composite(display_image.convert("RGBA"), transparent_layer)
                 
                 st.info("In 'Draw' mode, create new redactions. In 'Edit/Delete' mode, you can move, resize, or double-click to delete shapes.")
@@ -324,7 +571,7 @@ def main():
         st.divider()
         st.header("Generate Final Document")
         if st.button("Generate Redacted PDF"):
-            with st.spinner("Applying all redactions..."):
+            with st.spinner("Applying all redactions and removals..."):
                 approved_areas_by_page = defaultdict(list)
 
                 # Add AI-approved redactions (these are already in PDF point coordinates)
@@ -332,12 +579,16 @@ def main():
                 for s in approved_suggestions:
                     approved_areas_by_page[s['page_num']].extend(s.get('rects', []))
 
+                # Add duplicate email removals (these are also in PDF point coordinates)
+                approved_duplicate_emails = [d for d in st.session_state.duplicate_emails if st.session_state.duplicate_email_state.get(d['id'])]
+                for d in approved_duplicate_emails:
+                    approved_areas_by_page[d['page_num']].extend(d.get('rects', []))
+
                 # Add manually drawn redactions, scaling them correctly back to PDF coordinates
                 for page_num, canvas_objects in st.session_state.manual_rects.items():
                     original_img_width = st.session_state.original_pdf_images[page_num].width
                     # This factor converts from the displayed canvas coordinates back to PDF points
                     final_scaling_factor = (72.0 / PREVIEW_DPI) * (original_img_width / CANVAS_DISPLAY_WIDTH)
-                    
                     for obj in canvas_objects:
                         x1, y1 = obj["left"], obj["top"]
                         x2, y2 = x1 + obj["width"], y1 + obj["height"]
@@ -345,19 +596,18 @@ def main():
                             x1 * final_scaling_factor, y1 * final_scaling_factor,
                             x2 * final_scaling_factor, y2 * final_scaling_factor
                         )
-                        approved_areas_by_page[page_num].append(pdf_rect
-                        )
-                
+                        approved_areas_by_page[page_num].append(pdf_rect)
+
                 if not approved_areas_by_page:
-                    st.warning("No redactions were selected or drawn.")
+                    st.warning("No redactions or removals were selected or drawn.")
                 else:
                     final_redaction_areas = list(approved_areas_by_page.items())
                     output_filename = os.path.splitext(os.path.basename(st.session_state.processed_file))[0] + "_redacted.pdf"
                     output_pdf_path = os.path.join(output_dir, output_filename)
-                    
+
                     processor = PDFProcessor(st.session_state.processed_file)
                     processor.apply_redactions(final_redaction_areas, output_pdf_path)
-                    
+
                     st.session_state.final_pdf_path = output_pdf_path
                     st.success(f"Successfully created redacted document: {output_filename}")
 
@@ -369,6 +619,8 @@ def main():
                 file_name=os.path.basename(st.session_state.final_pdf_path), 
                 mime="application/pdf"
             )
+
+
 
 if __name__ == "__main__":
     main()  

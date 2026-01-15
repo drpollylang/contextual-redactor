@@ -1,0 +1,89 @@
+text,category,confidence_score,offset,length
+Sarah,Person,1.0,6,5
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+James,Person,0.99,162,5
+Sarah,Person,0.99,184,5
+Sarah,Person,1.0,264,5
+James,Person,0.97,70,5
+Sarah,Person,1.0,26,5
+sarah@company.com,Email,0.8,32,17
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+Priya,Person,1.0,162,5
+Sarah,Person,0.98,183,5
+Priya,Person,1.0,9,5
+James,Person,0.94,41,5
+james@company.com,Email,0.8,47,17
+Sarah,Person,1.0,75,5
+James,Person,0.97,70,5
+Sarah,Person,1.0,26,5
+sarah@company.com,Email,0.8,32,17
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+Sarah,Person,1.0,6,5
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+James,Person,0.99,162,5
+Sarah,Person,0.99,184,5
+Sarah,Person,1.0,264,5
+James,Person,0.97,70,5
+Sarah,Person,1.0,26,5
+sarah@company.com,Email,0.8,32,17
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+Priya,Person,1.0,162,5
+Sarah,Person,0.98,183,5
+Priya,Person,1.0,9,5
+James,Person,0.94,41,5
+james@company.com,Email,0.8,47,17
+Sarah,Person,1.0,75,5
+James,Person,0.97,70,5
+Sarah,Person,1.0,26,5
+sarah@company.com,Email,0.8,32,17
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+Sarah,Person,1.0,6,5
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+James,Person,0.99,162,5
+Sarah,Person,0.99,184,5
+Sarah,Person,1.0,264,5
+James,Person,0.97,70,5
+Sarah,Person,1.0,26,5
+sarah@company.com,Email,0.8,32,17
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+Priya,Person,1.0,162,5
+Sarah,Person,0.98,183,5
+Priya,Person,1.0,9,5
+James,Person,0.94,41,5
+james@company.com,Email,0.8,47,17
+Sarah,Person,1.0,75,5
+James,Person,0.97,70,5
+Sarah,Person,1.0,26,5
+sarah@company.com,Email,0.8,32,17
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+Sarah,Person,1.0,6,5
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+James,Person,0.99,162,5
+Sarah,Person,0.99,184,5
+Sarah,Person,1.0,264,5
+James,Person,0.97,70,5
+Sarah,Person,1.0,26,5
+sarah@company.com,Email,0.8,32,17
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
+Priya,Person,1.0,162,5
+Sarah,Person,0.98,183,5
+Priya,Person,1.0,9,5
+James,Person,0.94,41,5
+james@company.com,Email,0.8,47,17
+Sarah,Person,1.0,75,5
+James,Person,0.97,70,5
+Sarah,Person,1.0,26,5
+sarah@company.com,Email,0.8,32,17
+next Monday,DateTime,1.0,129,11
+Sarah,Person,0.96,150,5
