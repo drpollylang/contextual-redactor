@@ -1,3 +1,6 @@
+# ---- Start server using the following command ----
+# uvicorn redactor.fastapi_app:app --reload --port 8008
+
 # Mini FastAPI app for PDF text removal and reflow
 # Duplicate email removal and document reflow logic
 import base64
