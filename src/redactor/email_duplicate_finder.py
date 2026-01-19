@@ -13,7 +13,11 @@ HEADER_LINE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z\- ]{0,40}?)\s*:\s*(.+)$")
 ORIGINAL_MSG_RE = re.compile(r"^-{2,}\s*original message\s*-{2,}$", re.I)
 ON_WROTE_RE = re.compile(r"^\s*on .{0,200}wrote:?\s*$", re.I)
 # Marker that delineates start of an email block. Here, email blocks can start with 'From:' or 'On ... wrote:'
-EMAIL_START_BOUNDARY = re.compile(r"(?i)(?=From:\s*[A-Z]|On\s+.+?\s+wrote:)", re.MULTILINE)
+# EMAIL_START_BOUNDARY = re.compile(r"(?i)(?=From:\s*[A-Z]|On\s+.+?\s+wrote:)", re.MULTILINE)
+# EMAIL_START_BOUNDARY = re.compile(r"(?m)(?=^((?:>{0,10}\s*)?On .+?wrote: | From:\s.+ | -----Original Message----- | -{2,}\s*Forwarded message\s*-{2,})$)")
+EMAIL_START_BOUNDARY = re.compile(r"(?i)(?=From:\s*[A-Z]|On\s+.+?\s+wrote:|-{2,}\s*Original Message\s*-{2,}|-{2,}\s*Forwarded Message\s*-{2,})", re.MULTILINE)
+
+
 # EMAIL_START_BOUNDARY = re.compile(r"(?im)(?=^\s*From:|^\s*-{2,}\s*Original Message\s*-{2,}|^\s*On\s.+?\s+wrote:)", re.MULTILINE)
 # EMAIL_START_BOUNDARY = re.compile(r"(?im)(?=^[\t >\u00A0]*From:|^[\t >\u00A0]*On\s+.+?\s+wrote:|^[\t >\u00A0]*[-]{2,}\s*Original Message)", re.MULTILINE)
 HEADER_PATTERNS = {
@@ -471,74 +475,6 @@ class EmailDuplicateFinder:
             - coverage (for fuzzy): fraction of source matched in target
         """
 
-        def index_in_original(norm_target: str, orig_target: str, norm_source: str, orig_source: str) -> Optional[tuple]:
-            """
-            Map the normalized match back to indices in the original target string.
-            We use a simplistic approach: find normalized source in normalized target,
-            then locate the first and last non-space characters of that slice back in the original.
-            """
-            k = norm_target.find(norm_source)
-            if k == -1:
-                return None
-
-            # Build a naive mapping from normalized indices to original indices by scanning
-            # This avoids heavy bookkeeping and works well in practice for email bodies.
-            def build_map(s: str):
-                m = []
-                i = 0
-                j = 0
-                while i < len(s):
-                    if s[i].isspace():
-                        # collapse to single space in normalized; map that space to first whitespace char
-                        while i < len(s) and s[i].isspace():
-                            if len(m) == 0 or m[-1] != i:
-                                pass
-                            i += 1
-                        j += 1  # one normalized char for any whitespace run
-                    else:
-                        i += 1
-                        j += 1
-                # We don't return the map here to keep it lightweight; we’ll fallback to substring find
-                # in original where possible.
-                return
-
-            # Simple fallback: try to locate the original source text directly (case-insensitive)
-            low_target = orig_target.lower()
-            low_source = orig_source.lower()
-            k_orig = low_target.find(low_source)
-            if k_orig != -1:
-                return (k_orig, k_orig + len(orig_source))
-
-            # If that failed (e.g., whitespace differences), approximate by expanding around k
-            # Count normalized chars to original chars approximately by scanning orig_target
-            # and building a mapping only for the needed window.
-            # Create normalized with pointers to original indices
-            n_chars = []
-            n_to_o = []
-            i = 0
-            last_space = False
-            while i < len(orig_target):
-                ch = orig_target[i]
-                if ch.isspace():
-                    if not last_space:
-                        n_chars.append(' ')
-                        n_to_o.append(i)
-                        last_space = True
-                    # skip remaining whitespace in a run
-                else:
-                    n_chars.append(ch.lower())
-                    n_to_o.append(i)
-                    last_space = False
-                i += 1
-
-            # We now have a full map; derive original indices for the normalized window
-            if k < len(n_to_o):
-                start_o = n_to_o[k]
-                end_norm_idx = min(k + len(norm_source) - 1, len(n_to_o) - 1)
-                end_o = n_to_o[end_norm_idx] + 1
-                return (start_o, end_o)
-            return None
-
         duplicates = []
 
         # Precompute normalized texts
@@ -561,7 +497,7 @@ class EmailDuplicateFinder:
                 # ---- exact (normalized substring) ----
                 k = tgt_norm.find(src_norm)
                 if k != -1:
-                    span = index_in_original(tgt_norm, tgt_orig, src_norm, src_orig)
+                    span = self.__index_in_original(tgt_norm, tgt_orig, src_norm, src_orig)
                     duplicates.append({
                         "source_email_index": j,
                         "target_email_index": i,
@@ -578,6 +514,76 @@ class EmailDuplicateFinder:
                         duplicates.append(match)
 
         return duplicates
+
+
+    
+    def __index_in_original(self, norm_target: str, orig_target: str, norm_source: str, orig_source: str) -> Optional[tuple]:
+        """
+        Map the normalized match back to indices in the original target string.
+        We use a simplistic approach: find normalized source in normalized target,
+        then locate the first and last non-space characters of that slice back in the original.
+        """
+        k = norm_target.find(norm_source)
+        if k == -1:
+            return None
+
+        # Build a naive mapping from normalized indices to original indices by scanning
+        # This avoids heavy bookkeeping and works well in practice for email bodies.
+        def build_map(s: str):
+            m = []
+            i = 0
+            j = 0
+            while i < len(s):
+                if s[i].isspace():
+                    # collapse to single space in normalized; map that space to first whitespace char
+                    while i < len(s) and s[i].isspace():
+                        if len(m) == 0 or m[-1] != i:
+                            pass
+                        i += 1
+                    j += 1  # one normalized char for any whitespace run
+                else:
+                    i += 1
+                    j += 1
+            # We don't return the map here to keep it lightweight; we’ll fallback to substring find
+            # in original where possible.
+            return
+
+        # Simple fallback: try to locate the original source text directly (case-insensitive)
+        low_target = orig_target.lower()
+        low_source = orig_source.lower()
+        k_orig = low_target.find(low_source)
+        if k_orig != -1:
+            return (k_orig, k_orig + len(orig_source))
+
+        # If that failed (e.g., whitespace differences), approximate by expanding around k
+        # Count normalized chars to original chars approximately by scanning orig_target
+        # and building a mapping only for the needed window.
+        # Create normalized with pointers to original indices
+        n_chars = []
+        n_to_o = []
+        i = 0
+        last_space = False
+        while i < len(orig_target):
+            ch = orig_target[i]
+            if ch.isspace():
+                if not last_space:
+                    n_chars.append(' ')
+                    n_to_o.append(i)
+                    last_space = True
+                # skip remaining whitespace in a run
+            else:
+                n_chars.append(ch.lower())
+                n_to_o.append(i)
+                last_space = False
+            i += 1
+
+        # We now have a full map; derive original indices for the normalized window
+        if k < len(n_to_o):
+            start_o = n_to_o[k]
+            end_norm_idx = min(k + len(norm_source) - 1, len(n_to_o) - 1)
+            end_o = n_to_o[end_norm_idx] + 1
+            return (start_o, end_o)
+        return None
 
 
     def __fuzzy_matching(self, email_content: str, src_index: int, tgt_index: int, src_norm: str, tgt_norm: str, tgt_orig: str, fuzzy_coverage: float) -> Dict[str, Any]:
@@ -606,7 +612,7 @@ class EmailDuplicateFinder:
             a_end = max(b for a, b in a_positions)
             # Map the normalized window back to original indices
             window_norm = tgt_norm[a_start:a_end]
-            span = index_in_original(tgt_norm, tgt_orig, window_norm, tgt_orig[a_start:a_end])
+            span = self.__index_in_original(tgt_norm, tgt_orig, window_norm, tgt_orig[a_start:a_end])
             return {
                 "source_email_index": src_index, 
                 "target_email_index": tgt_index, 

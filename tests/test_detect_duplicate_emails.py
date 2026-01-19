@@ -176,6 +176,19 @@ def test_find_email_duplicates_wrapper():
     dups_test = test_find_email_duplicates(client, test_doc_with_dups)
     assert len(dups_test) == 3, f"Expected 3 duplicates, found {len(dups_test)}"
 
+    # Test docs with different styles/formatting of stacked email threads
+    print('-'*50 + '\nTesting document with different stacked email thread format:')
+    test_docs = [
+        'email_duplicates_test_docs/testdoc_1_6.pdf', 
+        # 'email_duplicates_test_docs/testdoc_2_6.pdf', # not working - why?
+        'email_duplicates_test_docs/testdoc_3_6.pdf', 
+        'email_duplicates_test_docs/testdoc_4_6.pdf'
+        ]
+    num_duplicates_expected = [6, 6, 6, 6]
+    for i, test_doc in enumerate(test_docs):
+        print(f'\nTesting document: {test_doc}')
+        dups_test = test_find_email_duplicates(client, test_doc)
+        assert len(dups_test) == num_duplicates_expected[i], f"Expected {num_duplicates_expected[i]} duplicates, found {len(dups_test)}"
 
 if __name__ == "__main__":
     test_find_email_duplicates_wrapper()
