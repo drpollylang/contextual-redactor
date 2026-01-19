@@ -5,10 +5,12 @@ from azure.ai.documentintelligence.models import DocumentParagraph, AnalyzeResul
 
 try:
     from azure_client import AzureAIClient
-    from utils import create_detailed_suggestions, contains_email_message, parse_thread, find_duplicate_emails, create_detailed_duplicate_emails
+    from email_duplicate_finder import EmailDuplicateFinder
+    from utils import create_detailed_suggestions
 except:
     from redactor.azure_client import AzureAIClient
-    from redactor.utils import create_detailed_suggestions, contains_email_message, parse_thread, find_duplicate_emails, create_detailed_duplicate_emails
+    from redactor.email_duplicate_finder import EmailDuplicateFinder
+    from redactor.utils import create_detailed_suggestions
 
 
 def merge_small_paragraphs(paragraphs: list[DocumentParagraph], min_length: int = 50) -> list[DocumentParagraph]:
@@ -197,36 +199,17 @@ def analyse_document_for_redactions(analysis_result: AnalyzeResult, user_context
     return detailed_suggestions
 
 
-def detect_email_duplicates(analysis_result: AnalyzeResult) -> list[str]:
+def analyse_document_for_duplicate_emails(analysis_result: AnalyzeResult) -> list:
     """
-    Checks the document for one or more emails. If emails are present, scans for duplicate emails
-    in stacked email threads. Returns a list of dicts containing the text and location of each duplicate email.
+    Orchestrates the detection of duplicate emails (e.g. inside stacked email threads) within the document.
+    Parameters:
+        analysis_result (AnalyzeResult): The analysis result of the document (output from Document Intelligence parsing doc).
+    Returns:
+        list: A list of detailed duplicate email information.
     """
-    # Check doc for emails
-    if contains_email_message(analysis_result):
-        print("Document contains email messages. Scanning for duplicate emails...")
-    else:
-        print("No email messages detected in document.")
-        return
-    
-    # Parse email thread and extract emails
     try:
-        emails = parse_thread(analysis_result.content)
-        duplicates = find_duplicate_emails(emails)
-        print(f"Found {len(duplicates)} duplicate emails in the document.")
+        duplicate_finder = EmailDuplicateFinder(analysis_result)
+        return duplicate_finder.find_duplicate_emails()
     except Exception as e:
-        print(f"Error extracting emails and scanning for duplicates: {e}")
-        return
-    
-    # Match duplicates to their locations in the document
-    duplicate_indices = set()
-    for dup in duplicates:
-        duplicate_indices.add(dup['target_email_index'])
-    duplicate_emails = []
-    for i, email in enumerate(emails):
-        if i in duplicate_indices:
-            duplicate_emails.append(email)
-    
-    return create_detailed_duplicate_emails(analysis_result, duplicate_emails)
-
-    
+        print(f"Error in duplicate email finder: {e}")
+        return []

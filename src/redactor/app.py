@@ -7,7 +7,7 @@ from io import BytesIO
 from collections import defaultdict
 from PIL import ImageDraw, Image
 from streamlit_drawable_canvas import st_canvas
-from redaction_logic import analyse_document_for_redactions, analyse_document_structure, detect_email_duplicates
+from redaction_logic import analyse_document_for_redactions, analyse_document_structure, analyse_document_for_duplicate_emails
 from pdf_processor import PDFProcessor
 from utils import get_original_pdf_images
 from pdf_edit_client import call_pdf_edit_api, rect_to_payload, canvas_obj_to_page_rect
@@ -113,7 +113,7 @@ def main():
             with st.spinner("Analysing document with your instructions..."):
                 analysed_document = analyse_document_structure(input_pdf_path)
                 suggestions = analyse_document_for_redactions(analysed_document, st.session_state.user_context)
-                duplicate_emails = detect_email_duplicates(analysed_document)
+                duplicate_emails = analyse_document_for_duplicate_emails(analysed_document)
                 st.session_state.suggestions = suggestions
                 st.session_state.duplicate_emails = duplicate_emails
                 st.session_state.processed_file = input_pdf_path
@@ -300,7 +300,11 @@ def main():
                     end = min(len(context), start + len(text) + 60) if text else min(len(context), 90)
 
                     # dup['page_num'] should be 0-based; adjust label only
-                    label = f"Pg {dup['page_num'] + 1}: ...{context[start:end]}..."
+                    # label = f"Pg {dup['page_num'] + 1}: ...{context[start:end]}..."
+                    pages = sorted({r["page_num"] for r in dup["rects"]})
+                    page_list = ", ".join(str(p+1) for p in pages)
+                    label = f"Pg(s) {page_list}: ...{context[start:end]}..."
+
 
                     # Default value: remove = True (checked means remove)
                     default_val = st.session_state.duplicate_email_state.get(dup['id'], True)
@@ -321,10 +325,21 @@ def main():
 
                 # Group rects by page, and sort rects top->bottom within page
                 rects_by_page = defaultdict(list)
+                # for d in to_remove:
+                #     page_idx = d["page_num"]  # assume 0-based page index
+                #     r = d["rects"][0]         # fitz.Rect in PAGE coordinates
+                #     rects_by_page[page_idx].append(r)
+                to_remove = [
+                    d for d in st.session_state.duplicate_emails
+                    if st.session_state.duplicate_email_state.get(d["id"], False)
+                ]
+
+                rects_by_page = defaultdict(list)
                 for d in to_remove:
-                    page_idx = d["page_num"]  # assume 0-based page index
-                    r = d["rects"][0]         # fitz.Rect in PAGE coordinates
-                    rects_by_page[page_idx].append(r)
+                    for entry in d["rects"]:
+                        page_idx = entry["page_num"]
+                        rects_by_page[page_idx].append(entry["rect"])
+
 
                 operations = []
                 for page_idx, rects in rects_by_page.items():
@@ -528,19 +543,40 @@ def main():
 
                 # Draw duplicate email boxes in a different color (e.g., semi-transparent red)
                 duplicate_email_fill = (255, 0, 0, 102)  # Semi-transparent red
-                for d in st.session_state.duplicate_emails:
-                        print(f"Page index: {page_index}, Duplicate email id and page num: {d['id']} / {d['page_num']}")
+                # for d in st.session_state.duplicate_emails:
+                #         print(f"Page index: {page_index}, Duplicate email id and page num: {d['id']} / {d['page_num']}")
+                # approved_duplicate_emails = [
+                #     d for d in st.session_state.duplicate_emails
+                #     if st.session_state.duplicate_email_state.get(d['id']) and d['page_num'] == page_index
+                # ]
                 approved_duplicate_emails = [
                     d for d in st.session_state.duplicate_emails
-                    if st.session_state.duplicate_email_state.get(d['id']) and d['page_num'] == page_index
+                    if st.session_state.duplicate_email_state.get(d['id'], False)
+                    and any(r["page_num"] == page_index for r in d["rects"])
                 ]
-                for dup in approved_duplicate_emails:
-                    print(f'dup: {dup}')
-                    for rect in dup.get('rects', []):
-                        # print(f"Duplicate email rect: {rect}")
+                # for dup in approved_duplicate_emails:
+                #     print(f'dup: {dup}')
+                #     for rect in dup.get('rects', []):
+                #         # print(f"Duplicate email rect: {rect}")
+                #         scaled_rect = (
+                #             rect.x0 * dpi_to_display_scaling, rect.y0 * dpi_to_display_scaling,
+                #             rect.x1 * dpi_to_display_scaling, rect.y1 * dpi_to_display_scaling
+                #         )
+                #         draw.rectangle(scaled_rect, fill=duplicate_email_fill)
+                for dup in st.session_state.duplicate_emails:
+                    if not st.session_state.duplicate_email_state.get(dup['id'], False):
+                        continue
+
+                    for item in dup["rects"]:
+                        if item["page_num"] != page_index:
+                            continue
+
+                        rect = item["rect"]
                         scaled_rect = (
-                            rect.x0 * dpi_to_display_scaling, rect.y0 * dpi_to_display_scaling,
-                            rect.x1 * dpi_to_display_scaling, rect.y1 * dpi_to_display_scaling
+                            rect.x0 * dpi_to_display_scaling,
+                            rect.y0 * dpi_to_display_scaling,
+                            rect.x1 * dpi_to_display_scaling,
+                            rect.y1 * dpi_to_display_scaling,
                         )
                         draw.rectangle(scaled_rect, fill=duplicate_email_fill)
 

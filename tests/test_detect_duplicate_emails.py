@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from redactor.azure_client import AzureAIClient
-from redactor.utils import extract_emails, find_stacked_email_duplicates, parse_thread, find_duplicate_emails
-from redactor.redaction_logic import analyse_document_for_redactions, analyse_document_structure, detect_email_duplicates
+# from redactor.utils import extract_emails, find_stacked_email_duplicates, parse_thread, find_duplicate_emails
+from redactor.redaction_logic import analyse_document_for_redactions, analyse_document_structure, analyse_document_for_duplicate_emails
 
 def test_find_email_duplicates(client, test_doc_filename: str):
     # Path to a test document containing NO emails
@@ -33,68 +33,75 @@ def test_find_email_duplicates(client, test_doc_filename: str):
         print(f"Error analyzing document: {e}")
         return
 
-    # Extract emails
-    try:
-        # emails = extract_emails(result)
-        emails = parse_thread(result.content)
-    except Exception as e:
-        print(f"Error extracting emails: {e}")
-        return
+    # # Extract emails
+    # try:
+    #     # emails = extract_emails(result)
+    #     # emails = parse_thread(result.content)
+    # except Exception as e:
+    #     print(f"Error extracting emails: {e}")
+    #     return
 
-    print(f"Found {len(emails)} emails.")
+    # print(f"Found {len(emails)} emails.")
 
     # Find duplicate emails
     try:
         # duplicates = find_stacked_email_duplicates(emails, result)
-        duplicates = find_duplicate_emails(emails)
+        # duplicates = find_duplicate_emails(emails)
+        duplicates = analyse_document_for_duplicate_emails(result)
     except Exception as e:
         print(f"Error detecting email duplicates: {e}")
         return
 
     # Print results
-    for i, email in enumerate(emails):
-        print(f"\nEmail {i+1}:")
-        # print(f"  Content: {email['content'][:100]}...")  # Truncate for readability
-        # # print(f"  Content: {email['content']}") 
-        # print(f"  Span: {email['span']}")
-        # print(f"  Bounding Region: {email['bounding_region']}")
-        # --------
-        # print(f"  From: {email['from_raw']}")
-        # print(f"  To: {email['to_raw']} - {email['to']}")
-        # print(f"  CC: {email['cc_raw']} - {email['cc']}")
-        # print(f"  BCC: {email['bcc_raw']} - {email['bcc']}")
-        # print(f"  subject: {email['subject']}")
-        # print(f"  date: {email['date']}")
-        # print(f"  message id: {email['message_id']}")
-        # print(f"  in reply to: {email['in_reply_to']}")
-        # print(f"  references: {email['references']}")
-        # print(f"  content type: {email['content_type']}")
-        # print(f"  body: {email['body']}")
-        # print(f"  spans: {email['spans']}")
-        # ------------------
-        print(f"  Headers: {email['headers']}")
-        print(f"  Body: {email['body']}")
-        print(f"  Span: {email['span']}")
-        print()
+    # for i, email in enumerate(emails):
+    #     print(f"\nEmail {i+1}:")
+    #     # print(f"  Content: {email['content'][:100]}...")  # Truncate for readability
+    #     # # print(f"  Content: {email['content']}") 
+    #     # print(f"  Span: {email['span']}")
+    #     # print(f"  Bounding Region: {email['bounding_region']}")
+    #     # --------
+    #     # print(f"  From: {email['from_raw']}")
+    #     # print(f"  To: {email['to_raw']} - {email['to']}")
+    #     # print(f"  CC: {email['cc_raw']} - {email['cc']}")
+    #     # print(f"  BCC: {email['bcc_raw']} - {email['bcc']}")
+    #     # print(f"  subject: {email['subject']}")
+    #     # print(f"  date: {email['date']}")
+    #     # print(f"  message id: {email['message_id']}")
+    #     # print(f"  in reply to: {email['in_reply_to']}")
+    #     # print(f"  references: {email['references']}")
+    #     # print(f"  content type: {email['content_type']}")
+    #     # print(f"  body: {email['body']}")
+    #     # print(f"  spans: {email['spans']}")
+    #     # ------------------
+    #     print(f"  Headers: {email['headers']}")
+    #     print(f"  Body: {email['body']}")
+    #     print(f"  Span: {email['span']}")
+    #     print()
 
     for i, duplicate in enumerate(duplicates):
         print(f"\nDuplicate Email {i+1}:")
-        print(f"  Source email index: {duplicate['source_email_index']}")
-        print(f"  Target email index: {duplicate['target_email_index']}")
-        print(f"  Type: {duplicate['type']}")
-        try:
-            print(f"  Coverage: {duplicate['coverage']}")
-        except KeyError:
-            pass
-        print(f"  Content: {duplicate['content']}")
-        print(f"  Target Span: {duplicate['target_span']}")
+        # print(f"  Source email index: {duplicate['source_email_index']}")
+        # print(f"  Target email index: {duplicate['target_email_index']}")
+        # print(f"  Type: {duplicate['type']}")
+        # try:
+        #     print(f"  Coverage: {duplicate['coverage']}")
+        # except KeyError:
+        #     pass
+        # print(f"  Content: {duplicate['content']}")
+        # print(f"  Target Span: {duplicate['target_span']}")
+        print(f"  ID: {duplicate['id']}")
+        print(f"  Text: {duplicate['text']}")
+        print(f"  Category: {duplicate['category']}")
+        print(f"  Reasoning: {duplicate['reasoning']}")
+        print(f"  Context: {duplicate['context']}")
+        print(f"  Rects: {duplicate['rects']}")
         print()
     
-    duplicate_indices = set()
+    duplicate_ids = set()
     for dup in duplicates:
-        duplicate_indices.add(dup['target_email_index'])
+        duplicate_ids.add(dup['id'].split('_')[-1]) # grab unique duplicates - remove copies due to multiple locations
 
-    return duplicate_indices
+    return duplicate_ids
 
 
 def test_redaction_logic_funcs(test_doc_filename: str):
@@ -132,7 +139,6 @@ def test_redaction_logic_funcs(test_doc_filename: str):
         print(f"  Category: {duplicate['category']}")
         print(f"  Reasoning: {duplicate['reasoning']}")
         print(f"  Context: {duplicate['context']}")
-        print(f"  Page num: {duplicate['page_num']}")
         print(f"  Rects: {duplicate['rects']}\n")
     
     return duplicates
@@ -161,10 +167,14 @@ def test_find_email_duplicates_wrapper():
     # assert len(dups_test) == 3, f"Expected 3 duplicates, found {len(dups_test)}"
 
     # Test functions in redaction_logic.py
-    print('-'*50 + '\nTesting document with stacked email thread containing 3 duplicates using redaction_logic.py funcs:')
+    # print('-'*50 + '\nTesting document with stacked email thread containing 3 duplicates using redaction_logic.py funcs:')
+    # test_doc_with_dups = 'FakeStackedEmailThread.pdf'
+    # dups_redlog_test = test_redaction_logic_funcs(test_doc_with_dups)
+    # assert len(dups_redlog_test) == 3, f"Expected 3 duplicates, found {len(dups_redlog_test)}"
+    print('-'*50 + '\nTesting document with stacked email thread containing 3 duplicates:')
     test_doc_with_dups = 'FakeStackedEmailThread.pdf'
-    dups_redlog_test = test_redaction_logic_funcs(test_doc_with_dups)
-    assert len(dups_redlog_test) == 3, f"Expected 3 duplicates, found {len(dups_redlog_test)}"
+    dups_test = test_find_email_duplicates(client, test_doc_with_dups)
+    assert len(dups_test) == 3, f"Expected 3 duplicates, found {len(dups_test)}"
 
 
 if __name__ == "__main__":
