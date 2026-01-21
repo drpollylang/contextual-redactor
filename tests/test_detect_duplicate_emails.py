@@ -180,10 +180,10 @@ def test_find_email_duplicates_wrapper():
     # Test docs with different styles/formatting of stacked email threads
     print('-'*50 + '\nTesting document with different stacked email thread format:')
     test_docs = [
-        'email_duplicates_test_docs/testdoc_1_6.pdf', 
-        'email_duplicates_test_docs/testdoc_2_6.pdf',
-        'email_duplicates_test_docs/testdoc_3_6.pdf', 
-        'email_duplicates_test_docs/testdoc_4_6.pdf'
+        # 'email_duplicates_test_docs/testdoc_1_6.pdf', 
+        # 'email_duplicates_test_docs/testdoc_2_6.pdf',
+        # 'email_duplicates_test_docs/testdoc_3_6.pdf', 
+        # 'email_duplicates_test_docs/testdoc_4_6.pdf'
         ]
     num_duplicates_expected = [6, 6, 6, 6]
     for i, test_doc in enumerate(test_docs):

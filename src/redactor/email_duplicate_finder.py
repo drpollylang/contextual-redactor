@@ -13,72 +13,27 @@ HEADER_LINE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z\- ]{0,40}?)\s*:\s*(.+)$")
 ORIGINAL_MSG_RE = re.compile(r"^-{2,}\s*original message\s*-{2,}$", re.I)
 ON_WROTE_RE = re.compile(r"^\s*on .{0,200}wrote:?\s*$", re.I)
 # Marker that delineates start of an email block. Here, email blocks can start with 'From:' or 'On ... wrote:'
-# EMAIL_START_BOUNDARY = re.compile(r"(?i)(?=From:\s*[A-Z]|On\s+.+?\s+wrote:)", re.MULTILINE)
-# EMAIL_START_BOUNDARY = re.compile(r"(?m)(?=^((?:>{0,10}\s*)?On .+?wrote: | From:\s.+ | -----Original Message----- | -{2,}\s*Forwarded message\s*-{2,})$)")
-# EMAIL_START_BOUNDARY = re.compile(r"(?i)(?=From:\s*[A-Z]|On\s+.+?\s+wrote:|>*On\s+.+?\s+wrote:|-{2,}\s*Original Message\s*-{2,}|-{2,}\s*Forwarded Message\s*-{2,})", re.MULTILINE)
-
-# EMAIL_START_BOUNDARY = re.compile(
-#     r'(?m)(?=^'
-#     r'(?:>{0,20}\s*)?On\s.+?\bwrote:|'              # On ... wrote: and quoted versions
-#     r'From:\s.+|'                                   # From:
-#     r'-{2,}\s*Original Message\s*-{2,}|'            # -----Original Message-----
-#     r'-{2,}\s*Forwarded Message\s*-{2,}'            # -----Forwarded Message-----
-#     r')'
-# )
-
-# EMAIL_START_BOUNDARY = re.compile(
-#     r'(?m)(?=^'
-#     r'(?:>{0,20}\s*)?On\s.+?\bwrote:|'              # On ... wrote: and quoted versions
-#     r'(?:>\s*)+On\s.+?\bwrote:|'                  # On ... wrote: with more than one >
-#     r'From:\s.+|'                                   # From:
-#     r'-{2,}\s*Original Message\s*-{2,}|'            # -----Original Message-----
-#     r'-{2,}\s*Forwarded Message\s*-{2,}'            # -----Forwarded Message-----
-#     r')'
-# )
-
-
-# EMAIL_START_BOUNDARY = re.compile(
-#     r'(?m)(?=^'
-#     r'\s*(?:>\s*)*>*On\s.+?\bwrote:|'                       # ANY level of > quoting
-#     r'\s*From:\s.+|'                                        # From:
-#     r'\s*-{2,}\s*Original Message\s*-{2,}|'                 # -----Original Message-----
-#     r'\s*-{2,}\s*Forwarded Message\s*-{2,}'                 # -----Forwarded Message-----
-#     r')'
-# )
-
 # EMAIL_START_BOUNDARY = re.compile(
 #     r'(?m)(?=^'
 #     r'\s*(?:>\s*)*On\s.+?\bwrote:|'                # any quoting level, any indent
-#     r'From:\s.+|'                                  # From:
 #     r'-{2,}\s*Original Message\s*-{2,}|'           # -----Original Message-----
-#     r'-{2,}\s*Forwarded Message\s*-{2,}'           # -----Forwarded Message-----
+#     r'-{2,}\s*Forwarded Message\s*-{2,}|'           # -----Forwarded Message-----
+#     r'From:\s.+'                                  # From:
 #     r')'
 # )
 
 
-
-# EMAIL_START_BOUNDARY = re.compile(
-#     r'''(?mx)
-#     (?=^(
-#            (?:>{1,20}\s*)?On\s.+?\bwrote:
-#          | From:\s+.*
-#          | -{2,}\s*Original Message\s*-{2,}
-#          | -{2,}\s*Forwarded Message\s*-{2,}
-#        )
-#     )
-#     '''
-# )
 EMAIL_START_BOUNDARY = re.compile(
-    r'(?m)(?=^'
-    r'\s*(?:>\s*)*On\s.+?\bwrote:|'                # any quoting level, any indent
-    r'From:\s.+|'                                  # From:
-    r'-{2,}\s*Original Message\s*-{2,}|'           # -----Original Message-----
-    r'-{2,}\s*Forwarded Message\s*-{2,}'           # -----Forwarded Message-----
-    r')'
+    r'(?m)(?=^('
+    r'\s*(?:>\s*)*On\s.+?\bwrote:'                 # any quoting level
+    r'|From:\s.+'
+    r'|-*\s*Original Message\s*-*'
+    r'|-*\s*Forwarded Message\s*-*'
+    r'))',
+    flags=re.IGNORECASE
 )
 
-# EMAIL_START_BOUNDARY = re.compile(r"(?im)(?=^\s*From:|^\s*-{2,}\s*Original Message\s*-{2,}|^\s*On\s.+?\s+wrote:)", re.MULTILINE)
-# EMAIL_START_BOUNDARY = re.compile(r"(?im)(?=^[\t >\u00A0]*From:|^[\t >\u00A0]*On\s+.+?\s+wrote:|^[\t >\u00A0]*[-]{2,}\s*Original Message)", re.MULTILINE)
+
 HEADER_PATTERNS = {
     "from": re.compile(r"^From:\s*(.+)", re.IGNORECASE),
     "to": re.compile(r"^To:\s*(.+)", re.IGNORECASE),
@@ -87,6 +42,9 @@ HEADER_PATTERNS = {
     "subject": re.compile(r"^Subject:\s*(.+)", re.IGNORECASE),
     "date": re.compile(r"^Date:\s*(.+)", re.IGNORECASE),
     }
+
+# Coverage threshold for fuzzy matching in duplicate detection
+FUZZY_COVERAGE = 0.70
 
 class EmailDuplicateFinder:
     """
@@ -293,7 +251,38 @@ class EmailDuplicateFinder:
             print(f"Found {len(emails)} email blocks in thread.")
         return emails
 
-    
+
+    def __normalize_before_splitting(self, full_text: str) -> str:
+        """
+        Before splitting full text into email blocks on the email start pattern, ensure that all headers starting 'On .... wrote ...'
+        or ' > On ... wrote ...' (with any number of > symbols) start on a new line so they can be recognised by the regex email
+        start boundary pattern. 
+        """
+        text = full_text.strip()    
+        text = re.sub(
+                r'(?<!\n)((?:>\s*)+On\s.+?\bwrote:)',
+                r'\n\1',
+                text,
+                flags=re.IGNORECASE
+            )
+        
+        # 1) ALWAYS break before any "On ... wrote:" even if unquoted and mid-line
+        text = re.sub(
+            r'(?i)(?<!\n)(\s*On\s.+?\bwrote:)',
+            r'\n\1',
+            text,
+            flags=re.IGNORECASE
+        )
+
+        text = re.sub(
+            r'(?i)(?<!\n)(\s*(?:>\s*)+On\s.+?\bwrote:)',
+            r'\n\1',
+            text,
+            flags=re.IGNORECASE
+        )
+        return text
+
+
     def __split_thread_into_email_blocks(self, full_text: str):
         """
         Splits stacked email threads into blocks by detecting header starts or quoted markers.
@@ -303,15 +292,10 @@ class EmailDuplicateFinder:
         Returns:
             List[Tuple[int, str]]: A list of email blocks with their starting indices and text.
         """
-        text = full_text.strip()    
-        text = re.sub(
-                r'(?<!\n)((?:>\s*)+On\s.+?\bwrote:)',
-                r'\n\1',
-                text,
-                flags=re.IGNORECASE
-            )
+        text = self.__normalize_before_splitting(full_text)
 
         indices = [m.start() for m in EMAIL_START_BOUNDARY.finditer(text)]
+        # print(f"INDICES: {indices}\n")
         if not indices:
             return [(0, text)]
 
@@ -319,6 +303,9 @@ class EmailDuplicateFinder:
         for idx, start in enumerate(indices):
             end = indices[idx + 1] if idx + 1 < len(indices) else len(text)
             blocks.append((start, self.__strip_leading_quotes(text[start:end].strip())))
+
+        # for i, block in enumerate(blocks):
+        #     print(f"BLOCK {i}:\n{block}\n")
 
         return blocks
 
@@ -523,7 +510,7 @@ class EmailDuplicateFinder:
         text_key: str = "body",
         min_chars: int = 30,
         fuzzy: bool = True,
-        fuzzy_coverage: float = 0.7
+        fuzzy_coverage: float = FUZZY_COVERAGE
     ) -> List[Dict[str, Any]]:
         """
         Identify duplicates where later emails include the content of earlier emails (quoted replies).
@@ -569,6 +556,7 @@ class EmailDuplicateFinder:
                 # ---- exact (normalized substring) ----
                 k = tgt_norm.find(src_norm)
                 if k != -1:
+                    # print("Found exact match")
                     span = self.__index_in_original(tgt_norm, tgt_orig, src_norm, src_orig)
                     duplicates.append({
                         "source_email_index": j,
@@ -581,8 +569,9 @@ class EmailDuplicateFinder:
 
                 # ---- fuzzy (optional) ----
                 if fuzzy:
-                    match = self.__fuzzy_matching(emails[j].get(text_key, ""), j, i, src_norm, tgt_norm, tgt_orig, fuzzy_coverage)
+                    match = self.__fuzzy_matching(emails[j].get(text_key, ""), j, i, src_norm, tgt_norm, tgt_orig, FUZZY_COVERAGE)
                     if match:
+                        # print('Found fuzzy match')
                         duplicates.append(match)
 
         return duplicates
@@ -672,11 +661,15 @@ class EmailDuplicateFinder:
         Returns:
             Dict[str, Any]: A dictionary with match details if a match is found, otherwise None.
         """
+        # print(f"FUZZY COVERAGE: {fuzzy_coverage}")
+        # print(f'Comparing emails {src_index} and {tgt_index} for fuzzy matches...')
         sm = difflib.SequenceMatcher(None, tgt_norm, src_norm)
         blocks = sm.get_matching_blocks()
         covered = sum(b.size for b in blocks if b.size > 0)
         coverage = covered / max(1, len(src_norm))
+        # print(f'Coverage: {coverage}')
         if coverage >= fuzzy_coverage:
+            # print('Fuzzy match found!')
             # Use the min/max 'a' indices in target (tgt_norm) to build a span
             a_positions = [(b.a, b.a + b.size) for b in blocks if b.size > 0]
             # Merge to a single window (keeps it "maximally simple")

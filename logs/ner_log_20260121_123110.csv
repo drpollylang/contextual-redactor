@@ -1,0 +1,97 @@
+text,category,confidence_score,offset,length
+Polly Lang,Person,0.95,6,10
+polly.lang@example.com,Email,0.8,18,22
+Samir Patel,Person,0.97,74,11
+samir.patel@gmail.com,Email,0.8,87,21
+Samir Patel,Person,0.99,6,11
+samir.patel@gmail.com,Email,0.8,19,21
+Polly Lang,Person,0.97,74,10
+polly.lang@example.com,Email,0.8,86,22
+Polly Lang,Person,0.99,23,10
+polly.lang@example.com,Email,0.8,35,22
+Samir Patel,Person,1.0,91,11
+samir.patel@gmail.com,Email,0.8,104,21
+Polly Lang,Person,0.91,6,10
+polly.lang@example.com,Email,0.8,18,22
+Samir Patel,Person,0.97,74,11
+samir.patel@gmail.com,Email,0.8,87,21
+Samir Patel,Person,0.99,29,11
+samir.patel@gmail.com,Email,0.8,42,21
+Polly Lang,Person,0.92,97,10
+polly.lang@example.com,Email,0.8,109,22
+Polly Lang,Person,0.99,23,10
+polly.lang@example.com,Email,0.8,35,22
+Samir Patel,Person,1.0,91,11
+samir.patel@gmail.com,Email,0.8,104,21
+Samir Patel,Person,0.99,6,11
+samir.patel@gmail.com,Email,0.8,19,21
+Polly Lang,Person,0.85,74,10
+polly.lang@example.com,Email,0.8,86,22
+Polly Lang,Person,0.95,24,10
+polly.lang@example.com,Email,0.8,36,22
+Samir Patel,Person,0.99,92,11
+samir.patel@gmail.com,Email,0.8,105,21
+Samir Patel,Person,0.99,29,11
+samir.patel@gmail.com,Email,0.8,42,21
+Polly Lang,Person,0.92,97,10
+polly.lang@example.com,Email,0.8,109,22
+Polly Lang,Person,0.97,24,10
+polly.lang@example.com,Email,0.8,36,22
+Samir Patel,Person,0.97,92,11
+samir.patel@gmail.com,Email,0.8,105,21
+Emily Chen,Person,0.94,7,10
+emily.chen@design.example,Email,0.8,20,25
+Polly Lang,Person,0.74,90,10
+polly.lang@example.com,Email,0.8,103,22
+Polly Lang,Person,0.93,7,10
+polly.lang@example.com,Email,0.8,20,22
+Emily Chen,Person,0.88,87,10
+emily.chen@design.example,Email,0.8,100,25
+Emily Chen,Person,0.99,32,10
+emily.chen@design.example,Email,0.8,44,25
+Emily Chen,Person,0.93,125,10
+emily.chen@design.example,Email,0.8,138,25
+2026,DateTime,0.54,18,4
+polly.lang@example.com,Email,0.8,56,22
+Polly Lang,Person,0.99,32,10
+polly.lang@example.com,Email,0.8,44,22
+Emily Chen,Person,0.98,198,10
+emily.chen@design.example,Email,0.8,210,25
+Polly Lang,Person,0.9,7,10
+polly.lang@example.com,Email,0.8,20,22
+Emily Chen,Person,0.96,87,10
+emily.chen@design.example,Email,0.8,100,25
+Emily Chen,Person,1.0,32,10
+emily.chen@design.example,Email,0.8,44,25
+Polly Lang,Person,0.95,171,10
+polly.lang@example.com,Email,0.8,183,22
+Emily Chen,Person,0.97,348,10
+emily.chen@design.example,Email,0.8,360,25
+Jean Dupont,Person,0.99,6,11
+jean.dupont@example.fr,Email,0.8,19,22
+Polly Lang,Person,0.95,82,10
+polly.lang@example.com,Email,0.8,94,22
+Polly Lang,Person,0.97,6,10
+polly.lang@example.com,Email,0.8,18,22
+Jean Dupont,Person,0.98,81,11
+jean.dupont@example.fr,Email,0.8,94,22
+Jean Dupont,Person,0.99,26,11
+jean.dupont@example.fr,Email,0.8,39,22
+Jean Dupont,Person,0.99,6,11
+jean.dupont@example.fr,Email,0.8,19,22
+Polly Lang,Person,0.96,82,10
+polly.lang@example.com,Email,0.8,94,22
+Polly Lang,Person,0.98,26,10
+polly.lang@example.com,Email,0.8,38,22
+Jean Dupont,Person,0.98,150,11
+jean.dupont@example.fr,Email,0.8,163,22
+Polly Lang,Person,0.98,6,10
+polly.lang@example.com,Email,0.8,18,22
+Jean Dupont,Person,0.99,4,11
+jean.dupont@example.fr,Email,0.8,17,22
+Jean Dupont,Person,1.0,26,11
+jean.dupont@example.fr,Email,0.8,39,22
+Polly Lang,Person,0.92,115,10
+polly.lang@example.com,Email,0.8,127,22
+Jean Dupont,Person,0.99,243,11
+jean.dupont@example.fr,Email,0.8,256,22

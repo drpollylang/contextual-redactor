@@ -1,0 +1,41 @@
+text,category,confidence_score,offset,length
+Polly Lang,Person,0.95,6,10
+polly.lang@example.com,Email,0.8,18,22
+Samir Patel,Person,0.97,74,11
+samir.patel@gmail.com,Email,0.8,87,21
+Samir Patel,Person,0.99,6,11
+samir.patel@gmail.com,Email,0.8,19,21
+Polly Lang,Person,0.97,74,10
+polly.lang@example.com,Email,0.8,86,22
+Polly Lang,Person,0.99,23,10
+polly.lang@example.com,Email,0.8,35,22
+Samir Patel,Person,1.0,91,11
+samir.patel@gmail.com,Email,0.8,104,21
+Polly Lang,Person,0.91,6,10
+polly.lang@example.com,Email,0.8,18,22
+Samir Patel,Person,0.97,74,11
+samir.patel@gmail.com,Email,0.8,87,21
+Samir Patel,Person,0.99,29,11
+samir.patel@gmail.com,Email,0.8,42,21
+Polly Lang,Person,0.92,97,10
+polly.lang@example.com,Email,0.8,109,22
+Polly Lang,Person,0.99,23,10
+polly.lang@example.com,Email,0.8,35,22
+Samir Patel,Person,1.0,91,11
+samir.patel@gmail.com,Email,0.8,104,21
+Samir Patel,Person,0.99,6,11
+samir.patel@gmail.com,Email,0.8,19,21
+Polly Lang,Person,0.85,74,10
+polly.lang@example.com,Email,0.8,86,22
+Polly Lang,Person,0.95,24,10
+polly.lang@example.com,Email,0.8,36,22
+Samir Patel,Person,0.99,92,11
+samir.patel@gmail.com,Email,0.8,105,21
+Samir Patel,Person,0.99,29,11
+samir.patel@gmail.com,Email,0.8,42,21
+Polly Lang,Person,0.92,97,10
+polly.lang@example.com,Email,0.8,109,22
+Polly Lang,Person,0.97,24,10
+polly.lang@example.com,Email,0.8,36,22
+Samir Patel,Person,0.97,92,11
+samir.patel@gmail.com,Email,0.8,105,21
