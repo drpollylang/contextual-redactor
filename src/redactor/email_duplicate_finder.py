@@ -15,8 +15,67 @@ ON_WROTE_RE = re.compile(r"^\s*on .{0,200}wrote:?\s*$", re.I)
 # Marker that delineates start of an email block. Here, email blocks can start with 'From:' or 'On ... wrote:'
 # EMAIL_START_BOUNDARY = re.compile(r"(?i)(?=From:\s*[A-Z]|On\s+.+?\s+wrote:)", re.MULTILINE)
 # EMAIL_START_BOUNDARY = re.compile(r"(?m)(?=^((?:>{0,10}\s*)?On .+?wrote: | From:\s.+ | -----Original Message----- | -{2,}\s*Forwarded message\s*-{2,})$)")
-EMAIL_START_BOUNDARY = re.compile(r"(?i)(?=From:\s*[A-Z]|On\s+.+?\s+wrote:|-{2,}\s*Original Message\s*-{2,}|-{2,}\s*Forwarded Message\s*-{2,})", re.MULTILINE)
+# EMAIL_START_BOUNDARY = re.compile(r"(?i)(?=From:\s*[A-Z]|On\s+.+?\s+wrote:|>*On\s+.+?\s+wrote:|-{2,}\s*Original Message\s*-{2,}|-{2,}\s*Forwarded Message\s*-{2,})", re.MULTILINE)
 
+# EMAIL_START_BOUNDARY = re.compile(
+#     r'(?m)(?=^'
+#     r'(?:>{0,20}\s*)?On\s.+?\bwrote:|'              # On ... wrote: and quoted versions
+#     r'From:\s.+|'                                   # From:
+#     r'-{2,}\s*Original Message\s*-{2,}|'            # -----Original Message-----
+#     r'-{2,}\s*Forwarded Message\s*-{2,}'            # -----Forwarded Message-----
+#     r')'
+# )
+
+# EMAIL_START_BOUNDARY = re.compile(
+#     r'(?m)(?=^'
+#     r'(?:>{0,20}\s*)?On\s.+?\bwrote:|'              # On ... wrote: and quoted versions
+#     r'(?:>\s*)+On\s.+?\bwrote:|'                  # On ... wrote: with more than one >
+#     r'From:\s.+|'                                   # From:
+#     r'-{2,}\s*Original Message\s*-{2,}|'            # -----Original Message-----
+#     r'-{2,}\s*Forwarded Message\s*-{2,}'            # -----Forwarded Message-----
+#     r')'
+# )
+
+
+# EMAIL_START_BOUNDARY = re.compile(
+#     r'(?m)(?=^'
+#     r'\s*(?:>\s*)*>*On\s.+?\bwrote:|'                       # ANY level of > quoting
+#     r'\s*From:\s.+|'                                        # From:
+#     r'\s*-{2,}\s*Original Message\s*-{2,}|'                 # -----Original Message-----
+#     r'\s*-{2,}\s*Forwarded Message\s*-{2,}'                 # -----Forwarded Message-----
+#     r')'
+# )
+
+# EMAIL_START_BOUNDARY = re.compile(
+#     r'(?m)(?=^'
+#     r'\s*(?:>\s*)*On\s.+?\bwrote:|'                # any quoting level, any indent
+#     r'From:\s.+|'                                  # From:
+#     r'-{2,}\s*Original Message\s*-{2,}|'           # -----Original Message-----
+#     r'-{2,}\s*Forwarded Message\s*-{2,}'           # -----Forwarded Message-----
+#     r')'
+# )
+
+
+
+# EMAIL_START_BOUNDARY = re.compile(
+#     r'''(?mx)
+#     (?=^(
+#            (?:>{1,20}\s*)?On\s.+?\bwrote:
+#          | From:\s+.*
+#          | -{2,}\s*Original Message\s*-{2,}
+#          | -{2,}\s*Forwarded Message\s*-{2,}
+#        )
+#     )
+#     '''
+# )
+EMAIL_START_BOUNDARY = re.compile(
+    r'(?m)(?=^'
+    r'\s*(?:>\s*)*On\s.+?\bwrote:|'                # any quoting level, any indent
+    r'From:\s.+|'                                  # From:
+    r'-{2,}\s*Original Message\s*-{2,}|'           # -----Original Message-----
+    r'-{2,}\s*Forwarded Message\s*-{2,}'           # -----Forwarded Message-----
+    r')'
+)
 
 # EMAIL_START_BOUNDARY = re.compile(r"(?im)(?=^\s*From:|^\s*-{2,}\s*Original Message\s*-{2,}|^\s*On\s.+?\s+wrote:)", re.MULTILINE)
 # EMAIL_START_BOUNDARY = re.compile(r"(?im)(?=^[\t >\u00A0]*From:|^[\t >\u00A0]*On\s+.+?\s+wrote:|^[\t >\u00A0]*[-]{2,}\s*Original Message)", re.MULTILINE)
@@ -64,6 +123,8 @@ class EmailDuplicateFinder:
         # Parse email thread and extract emails
         try:
             emails = self.__parse_thread(self.analysis_result.content, verbose=verbose)
+            for i, email in enumerate(emails):
+                print(f"Printing email {i}:\n{email['content']}\n")
             duplicates = self.__get_duplicate_emails(emails)
             if verbose: print(f"Found {len(duplicates)} duplicate emails in the document.")
         except Exception as e:
@@ -242,10 +303,13 @@ class EmailDuplicateFinder:
         Returns:
             List[Tuple[int, str]]: A list of email blocks with their starting indices and text.
         """
-        text = full_text.strip()
-
-        # Marker that delineates start of an email block. Here, email blocks can start with 'From:' or 'On ... wrote:'
-        # marker = re.compile(r"(?i)(?=From:\s*[A-Z]|On\s+.+?\s+wrote:)", re.MULTILINE)
+        text = full_text.strip()    
+        text = re.sub(
+                r'(?<!\n)((?:>\s*)+On\s.+?\bwrote:)',
+                r'\n\1',
+                text,
+                flags=re.IGNORECASE
+            )
 
         indices = [m.start() for m in EMAIL_START_BOUNDARY.finditer(text)]
         if not indices:
@@ -254,10 +318,18 @@ class EmailDuplicateFinder:
         blocks = []
         for idx, start in enumerate(indices):
             end = indices[idx + 1] if idx + 1 < len(indices) else len(text)
-            blocks.append((start, text[start:end].strip()))
+            blocks.append((start, self.__strip_leading_quotes(text[start:end].strip())))
+
         return blocks
 
 
+    def __strip_leading_quotes(self, block: str) -> str:
+        """
+        Remove any number of ">" markers + spaces at start of each line
+        """
+        return re.sub(r'(?m)^\s*(?:>\s*)+', '', block)
+
+    
     def __parse_email_block(self, block_text: str, global_offset: int) -> Dict[str, Any]:
         """
         Parse a single email block into headers and body.
@@ -451,7 +523,7 @@ class EmailDuplicateFinder:
         text_key: str = "body",
         min_chars: int = 30,
         fuzzy: bool = True,
-        fuzzy_coverage: float = 0.8
+        fuzzy_coverage: float = 0.7
     ) -> List[Dict[str, Any]]:
         """
         Identify duplicates where later emails include the content of earlier emails (quoted replies).
@@ -618,7 +690,7 @@ class EmailDuplicateFinder:
                 "target_email_index": tgt_index, 
                 "type": "fuzzy", 
                 "coverage": round(coverage, 3), 
-                "content": emails[j].get(text_key, ""), 
+                "content": email_content, 
                 "target_span": span if span else (0, 0)
                 }
         else:

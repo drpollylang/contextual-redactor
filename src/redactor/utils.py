@@ -4,6 +4,7 @@ from collections import defaultdict, Counter
 from azure.ai.documentintelligence.models import AnalyzeResult, DocumentParagraph, DocumentSpan
 import re
 import fitz
+from fuzzywuzzy import fuzz
 import os
 from PIL import Image
 from io import BytesIO
