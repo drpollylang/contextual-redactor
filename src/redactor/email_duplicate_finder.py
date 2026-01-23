@@ -28,7 +28,11 @@ EMAIL_START_BOUNDARY = re.compile(
     r'\s*(?:>\s*)*On\s.+?\bwrote:'                 # any quoting level
     r'|From:\s.+'
     r'|-*\s*Original Message\s*-*'
+    r'|-*\s*Original message\s*-*'
+    r'|-*\s*original message\s*-*'
     r'|-*\s*Forwarded Message\s*-*'
+    r'|-*\s*Forwarded message\s*-*'
+    r'|-*\s*forwarded message\s*-*'
     r'))',
     flags=re.IGNORECASE
 )
@@ -266,20 +270,75 @@ class EmailDuplicateFinder:
                 flags=re.IGNORECASE
             )
         
-        # 1) ALWAYS break before any "On ... wrote:" even if unquoted and mid-line
-        text = re.sub(
-            r'(?i)(?<!\n)(\s*On\s.+?\bwrote:)',
-            r'\n\1',
-            text,
-            flags=re.IGNORECASE
-        )
+        # # 1) ALWAYS break before any "On ... wrote:" even if unquoted and mid-line
+        # text = re.sub(
+        #     r'(?i)(?<!\n)(\s*On\s.+?\bwrote:)',
+        #     r'\n\1',
+        #     text,
+        #     flags=re.IGNORECASE
+        # )
 
-        text = re.sub(
-            r'(?i)(?<!\n)(\s*(?:>\s*)+On\s.+?\bwrote:)',
-            r'\n\1',
-            text,
-            flags=re.IGNORECASE
-        )
+        # text = re.sub(
+        #     r'(?i)(?<!\n)(\s*(?:>\s*)+On\s.+?\bwrote:)',
+        #     r'\n\1',
+        #     text,
+        #     flags=re.IGNORECASE
+        # )
+
+        
+        # # Break before any "On <date> ... wrote:"
+        # text = re.sub(
+        #     r'(?i)(?<!\n)(\s*(?:>\s*)*On\s+[^,\n]+?,\s+\d{1,2}\s+\w+\s+\d{4}.*?\bwrote:)',
+        #     r'\n\1',
+        #     text
+        # )
+
+        # # Break before any variant of "Forwarded message"
+        # text = re.sub(
+        #     r'(?i)(?<!\n)(\s*-{2,}\s*Forwarded Message\s*-*)',
+        #     r'\n\1',
+        #     text
+        # )
+        # text = re.sub(
+        #     r'(?i)(?<!\n)(\s*-{2,}\s*Forwarded message\s*-*)',
+        #     r'\n\1',
+        #     text
+        # )
+
+        # # Break before any variant of "Original Message"
+        # text = re.sub(
+        #     r'(?i)(?<!\n)(\s*-{2,}\s*Original Message\s*-*)',
+        #     r'\n\1',
+        #     text
+        # )
+        # text = re.sub(
+        #     r'(?i)(?<!\n)(\s*-{2,}\s*Original message\s*-*)',
+        #     r'\n\1',
+        #     text
+        # )
+
+        # # Break before "From:" headers appearing mid-line
+        # text = re.sub(
+        #     r'(?i)(?<!\n)(\s*From:\s+\S)',
+        #     r'\n\1',
+        #     text
+        # )
+        
+        # Always break before "On ... wrote:" (quoted or unquoted)
+        text = re.sub(r'(?i)(?<!\n)(\s*(?:>\s*)*On\s.+?\bwrote:)', r'\n\1', text)
+
+        # Break before Original Message (any dash variation)
+        text = re.sub(r'(?i)(?<!\n)(\s*-*\s*Original Message\s*-*)', r'\n\1', text)
+
+        # Break before Forwarded Message
+        text = re.sub(r'(?i)(?<!\n)(\s*-*\s*Forwarded Message\s*-*)', r'\n\1', text)
+        text = re.sub(r'(?i)(?<!\n)(\s*-*\s*Forwarded message\s*-*)', r'\n\1', text)
+        text = re.sub(r'(?i)(?<!\n)(\s*-*\s*forwarded message\s*-*)', r'\n\1', text)
+
+        # Break before From: (only when followed by a name or address)
+        text = re.sub(r'(?i)(?<!\n)(\s*From:\s+\S)', r'\n\1', text)
+
+
         return text
 
 

@@ -1,0 +1,111 @@
+text,category,confidence_score,offset,length
+Sarah Linton,Person,1.0,6,12
+Rachel Merton,Person,1.0,23,13
+Oliver Hughes,Person,0.99,64,13
+Rachel,Person,1.0,111,6
+Oliver,Person,1.0,56,6
+OT,Organization,0.72,157,2
+Oliver,Person,1.0,150,6
+Early,Organization,0.55,120,5
+Sarah,Person,1.0,261,5
+Rachel Merton,Person,1.0,6,13
+Sarah Linton,Person,1.0,24,12
+Oliver Hughes,Person,0.99,60,13
+Sarah,Person,1.0,107,5
+"22 Fernwood Close, Bridgwater",Address,1.0,33,29
+Oliver,Person,1.0,64,6
+14 March 2015),DateTime,1.0,77,14
+Bridgwater Primary School,Organization,1.0,169,25
+Dad,Person,0.6,1,3
+Oliver,Person,1.0,121,6
+Oliver,Person,0.99,51,6
+Rachel,Person,0.9,342,6
+Somerset Council,Organization,0.8,368,16
+Sarah Linton,Person,1.0,6,12
+Rachel Merton,Person,1.0,23,13
+Oliver Hughes,Person,0.99,64,13
+Rachel,Person,1.0,111,6
+Oliver,Person,1.0,56,6
+OT,Organization,0.72,157,2
+Oliver,Person,1.0,150,6
+Early,Organization,0.55,120,5
+Sarah,Person,1.0,261,5
+Rachel Merton,Person,1.0,6,13
+Sarah Linton,Person,1.0,24,12
+Oliver Hughes,Person,0.99,60,13
+Sarah,Person,1.0,107,5
+"22 Fernwood Close, Bridgwater",Address,1.0,33,29
+Oliver,Person,1.0,64,6
+14 March 2015),DateTime,1.0,77,14
+Bridgwater Primary School,Organization,1.0,169,25
+Dad,Person,0.6,1,3
+Oliver,Person,1.0,121,6
+Oliver,Person,0.99,51,6
+Rachel,Person,0.9,342,6
+Somerset Council,Organization,0.8,368,16
+Sarah Linton,Person,1.0,6,12
+Rachel Merton,Person,1.0,23,13
+Oliver Hughes,Person,0.99,64,13
+Rachel,Person,1.0,111,6
+Oliver,Person,1.0,56,6
+OT,Organization,0.72,157,2
+Oliver,Person,1.0,150,6
+Early,Organization,0.55,120,5
+Sarah,Person,1.0,261,5
+Rachel Merton,Person,1.0,6,13
+Sarah Linton,Person,1.0,24,12
+Oliver Hughes,Person,0.99,60,13
+Sarah,Person,1.0,107,5
+"22 Fernwood Close, Bridgwater",Address,1.0,33,29
+Oliver,Person,1.0,64,6
+14 March 2015),DateTime,1.0,77,14
+Bridgwater Primary School,Organization,1.0,169,25
+Dad,Person,0.6,1,3
+Oliver,Person,1.0,121,6
+Oliver,Person,0.99,51,6
+Rachel,Person,0.9,342,6
+Somerset Council,Organization,0.8,368,16
+Sarah Linton,Person,1.0,6,12
+Rachel Merton,Person,1.0,23,13
+Oliver Hughes,Person,0.99,64,13
+Rachel,Person,1.0,111,6
+Oliver,Person,1.0,56,6
+OT,Organization,0.72,157,2
+Oliver,Person,1.0,150,6
+Early,Organization,0.55,120,5
+Sarah,Person,1.0,261,5
+Rachel Merton,Person,1.0,6,13
+Sarah Linton,Person,1.0,24,12
+Oliver Hughes,Person,0.99,60,13
+Sarah,Person,1.0,107,5
+"22 Fernwood Close, Bridgwater",Address,1.0,33,29
+Oliver,Person,1.0,64,6
+14 March 2015),DateTime,1.0,77,14
+Bridgwater Primary School,Organization,1.0,169,25
+Dad,Person,0.6,1,3
+Oliver,Person,1.0,121,6
+Oliver,Person,0.99,51,6
+Rachel,Person,0.9,342,6
+Somerset Council,Organization,0.8,368,16
+Sarah Linton,Person,1.0,6,12
+Rachel Merton,Person,1.0,23,13
+Oliver Hughes,Person,0.99,64,13
+Rachel,Person,1.0,111,6
+Oliver,Person,1.0,56,6
+OT,Organization,0.72,157,2
+Oliver,Person,1.0,150,6
+Early,Organization,0.55,120,5
+Sarah,Person,1.0,261,5
+Rachel Merton,Person,1.0,6,13
+Sarah Linton,Person,1.0,24,12
+Oliver Hughes,Person,0.99,60,13
+Sarah,Person,1.0,107,5
+"22 Fernwood Close, Bridgwater",Address,1.0,33,29
+Oliver,Person,1.0,64,6
+14 March 2015),DateTime,1.0,77,14
+Bridgwater Primary School,Organization,1.0,169,25
+Dad,Person,0.6,1,3
+Oliver,Person,1.0,121,6
+Oliver,Person,0.99,51,6
+Rachel,Person,0.9,342,6
+Somerset Council,Organization,0.8,368,16

@@ -18,7 +18,7 @@ from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeResult, DocumentParagraph
 from azure.ai.textanalytics import TextAnalyticsClient, PiiEntityCategory
-from openai import AzureOpenAI
+from openai import AzureOpenAI, OpenAI
 
 EMAIL_HEADER_PATTERN = re.compile(
     r"(from:.*?$|sent:.*?$|to:.*?$|subject:.*?$|cc:.*?$|bcc:.*?$)",
@@ -45,8 +45,8 @@ class AzureAIClient:
             openai_key = os.environ["AZURE_OPENAI_KEY"]
             self.openai_deployment = os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"]
             self.embedding_deployment = os.environ["AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"]
-            self.openai_fast_deployment = os.environ["AZURE_OPENAI_GPT35_DEPLOYMENT_NAME"]
             self.openai_gpt4_mini_deployment = os.environ["AZURE_OPENAI_GPT41MINI_DEPLOYMENT_NAME"]
+            self.openai_gpt41_mini_deplyment = os.environ["AZURE_OPENAI_GPT41MINI_DEPLOYMENT_NAME"]
             self.openai_gpt5_deployment = os.environ["AZURE_OPENAI_GPT5_DEPLOYMENT_NAME"]
             self.openai_gpt5_nano_deployment = os.environ["AZURE_OPENAI_GPT5NANO_DEPLOYMENT_NAME"]
             lang_endpoint = os.environ["AZURE_LANGUAGE_ENDPOINT"]
@@ -58,10 +58,11 @@ class AzureAIClient:
         self.doc_intel_client = DocumentIntelligenceClient(
             endpoint=doc_intel_endpoint, credential=AzureKeyCredential(doc_intel_key)
         )
-        self.openai_client = AzureOpenAI(
+        self.openai_client = OpenAI(
             api_key=openai_key,
-            api_version="2024-02-01",
-            azure_endpoint=openai_endpoint
+            base_url=openai_endpoint
+            # api_version="2024-02-01",
+            # azure_endpoint=openai_endpoint
         )
         self.text_analytics_client = TextAnalyticsClient(
             endpoint=lang_endpoint, credential=AzureKeyCredential(lang_key)
@@ -121,17 +122,14 @@ class AzureAIClient:
         # Model 1 (parse user instructions)
         try:
             response = self.openai_client.chat.completions.create(
-                #model=self.openai_deployment,
-                #model=self.openai_fast_deployment,
-                #model=self.openai_gpt5_nano_deployment,
-                model-self.openai_gpt4_mini_deployment,
+                model=self.openai_gpt41_mini_deplyment,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_text}
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.0
-            )
+                )
             return json.loads(response.choices[0].message.content)
         except Exception as e:
             print(f"Error parsing user instructions: {e}")
